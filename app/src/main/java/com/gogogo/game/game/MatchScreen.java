@@ -39,6 +39,8 @@ public final class MatchScreen extends Screen {
     private float duckFlash;
     private boolean resultsShown;
 
+    private static final String[] SAFE_WORDS = {"SAFE!", "PHEW!", "NICE!", "CLUTCH!", "COZY!"};
+
     public MatchScreen(Game game) {
         super(game);
         opt = new Match.Options();
@@ -101,9 +103,18 @@ public final class MatchScreen extends Screen {
             case Match.EV_TICK:
                 s.play(Sfx.TICK, 0.8f, 1f + (3 - v) * 0.12f);
                 break;
-            case Match.EV_DROP:
+            case Match.EV_DROP: {
                 announce("DROP!", 0xFFFF4FA3, 0.7f);
+                Car p = match.player;
+                if (p != null && p.alive) {
+                    Arena.Tile t = match.arena.cellAt(p.x, p.z);
+                    if (t != null && t.color == match.target) {
+                        view.pop(SAFE_WORDS[(int) (Math.random() * SAFE_WORDS.length)], p.x, 3.4f, p.z, 0xFF5EE65A);
+                        s.play(Sfx.COIN, 0.5f, 1.4f);
+                    }
+                }
                 break;
+            }
             case Match.EV_ELIM:
                 if (a == match.player) {
                     deadT = 0;
@@ -279,6 +290,7 @@ public final class MatchScreen extends Screen {
         float wantH = 30f + (t != null ? Math.min(6f, t.speed() * 0.25f) : 0f);
         if (match.phase == Match.INTRO) wantH = 30f + (1f - Math.min(1f, match.phaseT / Match.INTRO_TIME)) * 40f;
         if (match.phase == Match.OVER) wantH = 22f;
+        if (match.phase == Match.DROP && match.phaseT < 1.6f) wantH += 7f;
         if (!camInit) {
             camX = tx;
             camZ = tz;
@@ -340,6 +352,12 @@ public final class MatchScreen extends Screen {
                 b.circle(knobX, knobY + 6, 52, 0x40200040);
                 b.shape(knobX, knobY, 104, 104, 52, 0xFFFFFFFF, 0xFF2A1840, 0, 0.4f, 0, 0);
             } else if (match.phase == Match.INTRO || match.round <= 1) {
+                if (match.phase == Match.INTRO && game.save.matches < 3) {
+                    float ty = H * 0.62f;
+                    b.shape(W / 2, ty, W - 80, 150, 40, 0xD02A1840, 0, 0, 0, 0, 0);
+                    b.text(b.title, "GET ON THE COLOR SHOWN UP TOP", W / 2, ty - 28, 34f, 0xFFFFE14D, UIBatch.CENTER, 0, 0);
+                    b.text(b.body, "before the timer runs out. Last car standing wins!", W / 2, ty + 30, 30f, 0xFFFFFFFF, UIBatch.CENTER, 0, 0);
+                }
                 b.alpha(0.6f + (float) Math.sin(game.time * 4f) * 0.3f);
                 b.text(b.body, "DRAG ANYWHERE TO DRIVE", W / 2, H - game.safeBottom - 60, 32f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 4f);
                 b.alpha(1f);
@@ -565,7 +583,12 @@ public final class MatchScreen extends Screen {
     }
 
     /** Ends the match for the player and shows results. */
+    private boolean finished;
+
     private void finish(boolean early) {
+        if (finished) return;
+        finished = true;
+        resultsShown = true;
         Car p = match.player;
         if (p != null && p.alive && match.phase != Match.OVER) {
             // gave up while alive: counts as being eliminated right now

@@ -1,0 +1,59 @@
+plugins {
+    id 'com.android.application'
+}
+
+def versionProps = new Properties()
+rootProject.file('version.properties').withInputStream { versionProps.load(it) }
+
+def keystoreProps = new Properties()
+def keystoreFile = rootProject.file('keystore/keystore.properties')
+if (keystoreFile.exists()) keystoreFile.withInputStream { keystoreProps.load(it) }
+
+android {
+    namespace 'com.gogogo.game'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.gogogo.game'
+        minSdk 24
+        targetSdk 35
+        versionCode versionProps['versionCode'] as int
+        versionName versionProps['versionName']
+    }
+
+    signingConfigs {
+        release {
+            storeFile rootProject.file('keystore/gogogo-release.jks')
+            storePassword keystoreProps['storePassword']
+            keyAlias keystoreProps['keyAlias']
+            keyPassword keystoreProps['keyPassword']
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    androidResources {
+        noCompress 'ogg'
+    }
+
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+
+    applicationVariants.configureEach { variant ->
+        variant.outputs.configureEach {
+            outputFileName = "GOGOGO-${variant.versionName}-${variant.buildType.name}.apk"
+        }
+    }
+}

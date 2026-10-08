@@ -327,7 +327,8 @@ def place(buf, x, start_s, gain=1.0):
 def song(bpm, bars, chords, lead, bass_style, hat16, seed):
     beat = 60.0 / bpm
     total = bars * 4 * beat
-    buf = np.zeros(int(SR * total) + 1)
+    loop_n = int(SR * total)
+    buf = np.zeros(loop_n + SR * 2)  # room for ringing tails
     kick, snare, hat, ohat = drum_kick(), drum_snare(), drum_hat(), drum_hat(True)
     for bar in range(bars):
         t0 = bar * 4 * beat
@@ -362,8 +363,11 @@ def song(bpm, bars, chords, lead, bass_style, hat16, seed):
             d = beat / 2 * 0.85
             x = (square(note(n), d, 0.25) * 0.5 + tri(note(n), d) * 0.5) * env(d, 0.004, 0.06, 0.55, 0.05)
             place(buf, x, t0 + k * beat / 2, 0.32)
-    buf = buf[:int(SR * total)]
-    return np.tanh(buf * 1.2)
+    # wrap the tails around so the loop point is seamless
+    out = buf[:loop_n].copy()
+    tail = buf[loop_n:]
+    out[:len(tail)] += tail[:loop_n]
+    return np.tanh(out * 1.2)
 
 
 def main():

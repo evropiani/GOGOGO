@@ -17,6 +17,7 @@ public final class ResultsScreen extends Screen {
     private float shown;
     private int lastTickCoins;
     private boolean secret;
+    private boolean newBest;
 
     public ResultsScreen(Game game, Match m, boolean early) {
         super(game);
@@ -49,7 +50,10 @@ public final class ResultsScreen extends Screen {
         s.matches++;
         if (won) s.wins++;
         if (tied) s.ties++;
-        if (s.bestPlace == 0 || place < s.bestPlace) s.bestPlace = place;
+        if (s.bestPlace == 0 || place < s.bestPlace) {
+            newBest = s.matches > 1 && !won;
+            s.bestPlace = place;
+        }
         s.bonks += bonks;
         s.roundsSurvived += rounds;
         // the duck knows
@@ -105,6 +109,11 @@ public final class ResultsScreen extends Screen {
         String sub = won ? "Last car rolling!" : (tied ? "Everyone fell. Everyone wins?" : "out of " + total + " cars");
         b.text(b.body, sub, W / 2, top + 270, 36f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 5f);
         TitleScreen.coinPill(game, W - 24, top + 52);
+        if (newBest && t > 1f) {
+            float k2 = Ease.outBack(Math.min(1f, (t - 1f) * 3f));
+            b.shape(W / 2 + 150, top + 110, 170 * k2, 56 * k2, 28, 0xFFFF3B5C, 0xFFFFFFFF, 4f, 0.4f, 0, 0f);
+            b.text(b.title, "NEW BEST!", W / 2 + 150, top + 112, 28f * k2, 0xFFFFFFFF, UIBatch.CENTER, 0, 0);
+        }
 
         // reward panel
         float pw = 620, ph = 120 + rewardCount * 56 + 40;

@@ -31,9 +31,20 @@ jobs:
           name: GOGOGO-apk
           path: app/build/outputs/apk/release/*.apk
 
+      - name: Read version
+        id: ver
+        run: echo "name=$(grep '^versionName=' version.properties | cut -d= -f2)" >> "$GITHUB_OUTPUT"
+
+      # Every build of main (or a v* tag) publishes the APK as the release for the
+      # current versionName; bump version.properties to start a new release.
       - name: Publish GitHub release
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.ver.outputs.name }}
+          name: GO! GO! GO! v${{ steps.ver.outputs.name }}
+          target_commitish: ${{ github.sha }}
           files: app/build/outputs/apk/release/*.apk
-          generate_release_notes: true
+          make_latest: true
+          body: |
+            Signed release APK of GO! GO! GO! v${{ steps.ver.outputs.name }}.
+            Download the .apk below, open it on an Android 7.0+ phone and allow installing from this source.

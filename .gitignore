@@ -1,0 +1,11 @@
+# build outputs
+build/
+app/build/
+.gradle/
+local.properties
+*.iml
+.idea/
+captures/
+.cxx/
+# desktop harness
+desktop-save.properties

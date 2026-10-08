@@ -1,0 +1,214 @@
+package com.gogogo.game.game;
+
+import com.gogogo.game.engine.Rng;
+
+/** Simple, slightly goofy opponent brain. */
+public final class Bot {
+    public final float reaction;   // seconds before reacting to a new color
+    public final float mistake;    // chance to go for a wrong color
+    public final float aggression; // likes ramming people off islands
+    public final float smarts;     // avoids crowds, plans boost
+    public boolean dumb;           // dev option
+
+    public Arena.Tile goal;
+    public float thinkT;
+    private int seenRound = -1;
+    public boolean confused;
+    private float wobble;
+    private float rethinkT;
+    private int victim = -1;
+
+    public Bot(Rng rng, int tier) {
+        switch (tier) {
+            case 0: // noob
+                reaction = rng.range(0.55f, 1.05f);
+                mistake = rng.range(0.07f, 0.14f);
+                aggression = rng.range(0f, 0.3f);
+                smarts = rng.range(0f, 0.3f);
+                break;
+            case 2: // pro
+                reaction = rng.range(0.16f, 0.32f);
+                mistake = rng.range(0.0f, 0.02f);
+                aggression = rng.range(0.4f, 1f);
+                smarts = rng.range(0.7f, 1f);
+                break;
+            default:
+                reaction = rng.range(0.3f, 0.6f);
+                mistake = rng.range(0.02f, 0.06f);
+                aggression = rng.range(0.1f, 0.7f);
+                smarts = rng.range(0.3f, 0.7f);
+                break;
+        }
+        wobble = rng.range(0f, 100f);
+    }
+
+    public void think(Match m, Car c, float dt) {
+        Arena a = m.arena;
+        wobble += dt;
+        if (m.phase == Match.INTRO || m.phase == Match.OVER) {
+            c.inX = c.inZ = 0;
+            return;
+        }
+        if (m.phase == Match.SHOW) {
+            if (seenRound != m.round) {
+                seenRound = m.round;
+                thinkT = reaction * (dumb ? 2.5f : 1f) * m.rng.range(0.85f, 1.2f);
+                goal = null;
+                confused = m.rng.chance(dumb ? 0.6f : mistake + Math.min(0.04f, m.round * 0.002f));
+                victim = -1;
+            }
+            if (thinkT > 0) {
+                thinkT -= dt;
+                // drift a little while "thinking"
+                c.inX = (float) Math.sin(wobble * 1.3f) * 0.15f;
+                c.inZ = (float) Math.cos(wobble * 1.1f) * 0.15f;
+                return;
+            }
+            if (goal == null || goal.state != Arena.PRESENT) pickGoal(m, c);
+            // smart bots realize their mistake
+            if (confused && goal != null && goal.color != m.target) {
+                rethinkT += dt;
+                if (rethinkT > 0.6f && m.rng.chance(smarts * 0.04f)) {
+                    confused = false;
+                    rethinkT = 0;
+                    pickGoal(m, c);
+                }
+            }
+            Arena.Tile here = a.cellAt(c.x, c.z);
+            boolean safeHere = here != null && here.color == m.target && here.state == Arena.PRESENT;
+            if (safeHere && !confused && goal != here && dist(c, goal) > Arena.PITCH * 0.9f) {
+                // already safe: only move if the goal is close, otherwise settle
+                goal = here;
+            }
+            if (goal != null && aggression > 0.55f && m.round >= 4 && safeHere && m.timer < 1.4f && !dumb) {
+                seekVictim(m, c, here);
+                if (victim >= 0) return;
+            }
+            steerTo(m, c, goal, true);
+        } else {
+            // islands only: stay central, maybe shove someone
+            Arena.Tile here = a.cellAt(c.x, c.z);
+            if (here != null && here.state == Arena.PRESENT) {
+                if (aggression > 0.6f && !dumb && m.round >= 4 && m.phase == Match.DROP && m.phaseT > 0.4f) {
+                    seekVictim(m, c, here);
+                    if (victim >= 0) return;
+                }
+                steerTo(m, c, here, false);
+            } else {
+                c.inX = c.inZ = 0;
+            }
+        }
+    }
+
+    private void seekVictim(Match m, Car c, Arena.Tile here) {
+        if (victim >= 0) {
+            Car v = m.cars[victim];
+            if (!v.alive || m.arena.cellAt(v.x, v.z) != here) victim = -1;
+        }
+        float ramp = Math.min(1f, (m.round - 3) / 6f);
+        if (victim < 0 && m.rng.chance(0.02f * ramp)) {
+            float best = 9f;
+            for (Car o : m.cars) {
+                if (o == c || !o.alive) continue;
+                float dx = o.x - c.x, dz = o.z - c.z;
+                float d = dx * dx + dz * dz;
+                if (d < best && m.arena.cellAt(o.x, o.z) == here) {
+                    best = d;
+                    victim = o.index;
+                }
+            }
+        }
+        if (victim >= 0) {
+            Car v = m.cars[victim];
+            // push the victim away from the tile center
+            float px = v.x - here.x, pz = v.z - here.z;
+            float pl = (float) Math.sqrt(px * px + pz * pz) + 0.001f;
+            float tx = v.x - px / pl * 1.2f, tz = v.z - pz / pl * 1.2f;
+            float dx = tx - c.x, dz = tz - c.z;
+            float d = (float) Math.sqrt(dx * dx + dz * dz) + 0.001f;
+            if (d < 1.4f) {
+                dx = v.x - c.x;
+                dz = v.z - c.z;
+                d = (float) Math.sqrt(dx * dx + dz * dz) + 0.001f;
+                if (c.boostCd <= 0 && m.rng.chance(0.08f)) c.wantBoost = true;
+            }
+            c.inX = dx / d;
+            c.inZ = dz / d;
+            // don't ram yourself off the edge
+            float ex = c.x + c.inX * 2.5f, ez = c.z + c.inZ * 2.5f;
+            if (m.arena.cellAt(ex, ez) != here) {
+                victim = -1;
+            }
+        }
+    }
+
+    private static float dist(Car c, Arena.Tile t) {
+        if (t == null) return 999f;
+        float dx = t.x - c.x, dz = t.z - c.z;
+        return (float) Math.sqrt(dx * dx + dz * dz);
+    }
+
+    private void pickGoal(Match m, Car c) {
+        Arena a = m.arena;
+        Arena.Tile best = null;
+        float bestScore = Float.MAX_VALUE;
+        int want = m.target;
+        if (confused) {
+            // goofy: chase some other color nearby
+            want = (m.target + 1 + m.rng.i(Math.max(1, m.numColors - 1))) % m.numColors;
+        }
+        for (Arena.Tile t : a.tiles) {
+            if (t.state != Arena.PRESENT || t.color != want) continue;
+            float dx = t.x - c.x, dz = t.z - c.z;
+            float d = (float) Math.sqrt(dx * dx + dz * dz);
+            float score = d + t.crowd * (1.5f + 3f * smarts);
+            // avoid border tiles a bit
+            if (t.gx == 0 || t.gz == 0 || t.gx == a.n - 1 || t.gz == a.n - 1) score += 2f * smarts;
+            if (score < bestScore) {
+                bestScore = score;
+                best = t;
+            }
+        }
+        if (goal != null) goal.crowd = Math.max(0, goal.crowd - 1);
+        goal = best;
+        if (goal != null) goal.crowd++;
+        aim = m.rng.range(-0.25f, 0.25f) * Arena.PITCH;
+        aim2 = m.rng.range(-0.25f, 0.25f) * Arena.PITCH;
+    }
+
+    private float aim, aim2;
+
+    private void steerTo(Match m, Car c, Arena.Tile t, boolean rush) {
+        if (t == null) {
+            c.inX = c.inZ = 0;
+            return;
+        }
+        float gx = t.x + aim, gz = t.z + aim2;
+        float dx = gx - c.x, dz = gz - c.z;
+        float d = (float) Math.sqrt(dx * dx + dz * dz);
+        if (d < 0.6f) {
+            c.inX = c.inZ = 0;
+            return;
+        }
+        float sp = c.speed();
+        // coasting stops in about speed / drag units: let go of the stick in time
+        float stopDist = sp / 2.6f;
+        float nx = dx / d, nz = dz / d;
+        float closing = (c.vx * nx + c.vz * nz);
+        float mag;
+        if (d < stopDist * 0.9f && closing > 2f) mag = 0f;
+        else mag = Math.min(1f, 0.35f + d / 4f);
+        c.inX = nx * mag;
+        c.inZ = nz * mag;
+        if (rush && !dumb && c.boostCd <= 0 && m.timer > 0) {
+            float need = d / Math.max(4f, c.maxSpeed);
+            float facing = (float) (Math.sin(c.yaw) * nx + Math.cos(c.yaw) * nz);
+            if (facing > 0.9f && d > 9f && (need > m.timer * 0.75f || m.rng.chance(0.01f * smarts))) c.wantBoost = true;
+        }
+    }
+
+    public void forget() {
+        goal = null;
+        seenRound = -1;
+    }
+}

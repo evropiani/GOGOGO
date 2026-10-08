@@ -201,7 +201,49 @@ public final class Renderer {
         return m;
     }
 
+    private final float[] planes = new float[24];
+    private boolean cull;
+    public int drawn, culled;
+
+    /** Extracts the view frustum from a camera (call after Camera.update) to cull off-screen instances. */
+    public void setFrustum(Camera cam) {
+        float[] m = cam.viewProj;
+        // rows of the column-major matrix
+        for (int i = 0; i < 6; i++) {
+            int row = i / 2;
+            float sgn = (i % 2 == 0) ? 1f : -1f;
+            float a = m[3] + sgn * m[row];
+            float b = m[7] + sgn * m[4 + row];
+            float c = m[11] + sgn * m[8 + row];
+            float d = m[15] + sgn * m[12 + row];
+            float l = (float) Math.sqrt(a * a + b * b + c * c);
+            planes[i * 4] = a / l;
+            planes[i * 4 + 1] = b / l;
+            planes[i * 4 + 2] = c / l;
+            planes[i * 4 + 3] = d / l;
+        }
+        cull = true;
+    }
+
+    private boolean visible(Mesh mesh, float[] model) {
+        if (!cull) return true;
+        float x = model[12], y = model[13], z = model[14];
+        float sx = model[0] * model[0] + model[1] * model[1] + model[2] * model[2];
+        float sy = model[4] * model[4] + model[5] * model[5] + model[6] * model[6];
+        float sz = model[8] * model[8] + model[9] * model[9] + model[10] * model[10];
+        float r = mesh.radius * (float) Math.sqrt(Math.max(sx, Math.max(sy, sz)));
+        for (int i = 0; i < 6; i++) {
+            if (planes[i * 4] * x + planes[i * 4 + 1] * y + planes[i * 4 + 2] * z + planes[i * 4 + 3] < -r) return false;
+        }
+        return true;
+    }
+
     public void draw(Mesh m, float[] model, int c1, int c2, float flash) {
+        if (!visible(m, model)) {
+            culled++;
+            return;
+        }
+        drawn++;
         if (!m.queued) {
             m.queued = true;
             queue.add(m);
@@ -272,6 +314,7 @@ public final class Renderer {
             m.queued = false;
         }
         queue.clear();
+        cull = false;
 
         if (blobCount > 0) {
             gl.glDepthMask(false);

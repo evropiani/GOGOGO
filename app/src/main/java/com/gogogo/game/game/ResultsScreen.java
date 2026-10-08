@@ -62,7 +62,7 @@ public final class ResultsScreen extends Screen {
 
         room = new Showroom(game);
         room.showSaved(s.selectedCar);
-        room.screenLift = 0.3f;
+        room.screenY = 0.36f;
         if (won || tied) room.pedestalColor = 0xFFD23F;
     }
 
@@ -100,9 +100,10 @@ public final class ResultsScreen extends Screen {
         String head = won ? "WINNER!" : (tied ? "TIE!" : "#" + place);
         int col = won ? 0xFFFFE14D : (tied ? 0xFF3BE0FF : 0xFFFFFFFF);
         float sc = Ease.outElastic(Math.min(1f, t * 1.5f));
-        b.textShadow(b.title, head, W / 2, top + 130, 150f * sc, col, UIBatch.CENTER, 0xFF2A1840, 13f, 12f, 0x70200040);
+        float hs = Math.min(150f, 150f * (W - 80) / Math.max(1f, b.title.width(head, 150f)));
+        b.textShadow(b.title, head, W / 2, top + 175, hs * sc, col, UIBatch.CENTER, 0xFF2A1840, 13f, 12f, 0x70200040);
         String sub = won ? "Last car rolling!" : (tied ? "Everyone fell. Everyone wins?" : "out of " + total + " cars");
-        b.text(b.body, sub, W / 2, top + 235, 36f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 5f);
+        b.text(b.body, sub, W / 2, top + 270, 36f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 5f);
         TitleScreen.coinPill(game, W - 24, top + 52);
 
         // reward panel

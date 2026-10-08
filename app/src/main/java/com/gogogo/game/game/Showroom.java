@@ -15,9 +15,10 @@ public final class Showroom {
     private final float[] base = new float[16], m = new float[16];
     private float drop; // drop-in animation 1 -> 0
 
-    /** Vertical placement of the car on screen: 0 = center, positive = higher. */
-    public float screenLift = 0.22f;
-    public float distance = 13f;
+    /** Where the car sits on screen, as a fraction of the screen height from the top. */
+    public float screenY = 0.3f;
+    public float distance = 17f;
+    public float height = 7f;
 
     public Showroom(Game game) {
         this.game = game;
@@ -62,10 +63,14 @@ public final class Showroom {
     }
 
     public void render() {
-        float H = 6.2f;
-        float lift = screenLift * distance * 0.55f;
-        game.cam.fov = 38f;
-        game.cam.set(0, H, distance, 0, 1.0f - lift, 0);
+        float fov = 38f;
+        // aim so that the car's center (y = 1) lands at screenY
+        double below = Math.atan((height - 1f) / distance);
+        double off = Math.atan((1f - 2f * screenY) * Math.tan(Math.toRadians(fov / 2)));
+        float ty = height - distance * (float) Math.tan(below + off);
+        game.cam.fov = fov;
+        game.cam.set(0, height, distance, 0, ty, 0);
+        game.beginWorld();
         M4.trs(m, 0, 0, 0, spin * 0.3f, 0, 0, 1, 1, 1);
         game.r.draw(game.art.pedestal, m, pedestalColor, pedestalAccent, 0f);
         if (car != null) {

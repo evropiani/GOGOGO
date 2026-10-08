@@ -73,7 +73,7 @@ public final class GarageScreen extends Screen {
     }
 
     public boolean render3d() {
-        room.screenLift = 0.34f;
+        room.screenY = 0.235f;
         room.render();
         return true;
     }

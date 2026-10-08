@@ -126,7 +126,7 @@ public final class Cars {
                 }
             }.wheels(0.4f, 0.34f, 0.8f, 0.82f, -0.82f).topper(1.8f, 0.82f),
 
-            new CarDef(7, "BATHTUB BOMBER", "Squeaky clean. Dirty driver.", 4000, 3.5f, 4f, 4f, 3f, 8, 16) {
+            new CarDef(7, "BATHTUB BOMBER", "Squeaky clean. Dirty driver.", 4000, 3.5f, 4f, 4f, 3f, 8, 1) {
                 public void build(MeshBuilder m) {
                     m.paint(1f).box(0, 1.0f, 0, 1.7f, 0.96f, 2.6f, 0.42f);
                     m.fixed(0x6FD3FF).box(0, 1.44f, 0, 1.3f, 0.1f, 2.16f, 0.05f);

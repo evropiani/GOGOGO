@@ -44,6 +44,7 @@ public final class TitleScreen extends Screen {
         float cx = (float) Math.sin(camAngle) * r, cz = (float) Math.cos(camAngle) * r;
         game.cam.fov = 55f;
         game.cam.set(cx, 52f, cz, 0, -6f, 0);
+        game.beginWorld();
         view.draw();
         return true;
     }
@@ -67,7 +68,10 @@ public final class TitleScreen extends Screen {
             float size = 150f * appear;
             if (size > 1f) b.textShadow(b.title, "GO!", x + (i - 1) * 40f, y, size, cols[i], UIBatch.CENTER, 0xFF2A1840, 14f, 12f, 0x70200040);
         }
-        b.textShadow(b.body, "100 cars. 1 color. 0 chill.", W / 2, top + 640, 34f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 5f, 4f, 0x50200040);
+        String tag = "100 cars. 1 color. 0 chill.";
+        float tw = b.body.width(tag, 36f) + 60;
+        b.shape(W / 2, top + 642, tw, 64, 32, 0xC02A1840, 0, 0, 0, 0, 0);
+        b.text(b.body, tag, W / 2, top + 642, 36f, 0xFFFFFFFF, UIBatch.CENTER, 0, 0);
 
         // coins pill
         coinPill(game, W - 24, top + 52);
@@ -82,12 +86,31 @@ public final class TitleScreen extends Screen {
         if (ui.button("garage", W / 2 - 300, by + 120, 290, 120, 0xFF8E62FF, "GARAGE", 50f)) {
             game.setScreen(new GarageScreen(game));
         }
+        if (canAffordSomething(game.save)) {
+            float bx = W / 2 - 30, byy = by + 128;
+            float s2 = 1f + (float) Math.abs(Math.sin(t * 4f)) * 0.15f;
+            b.circle(bx, byy + 3, 24 * s2, 0x50200040);
+            b.shape(bx, byy, 48 * s2, 48 * s2, 24 * s2, 0xFFFF3B5C, 0xFFFFFFFF, 4f, 0.4f, 0, 0);
+            b.text(b.title, "!", bx, byy + 1, 34f * s2, 0xFFFFFFFF, UIBatch.CENTER, 0, 0);
+        }
         if (ui.button("settings", W / 2 + 10, by + 120, 290, 120, 0xFF3BA8FF, "SETTINGS", 50f)) {
             game.setScreen(new SettingsScreen(game));
         }
         Save s = game.save;
         String stats = "WINS " + s.wins + "   MATCHES " + s.matches + (s.bestPlace > 0 ? "   BEST #" + s.bestPlace : "");
         b.text(b.body, stats, W / 2, H - game.safeBottom - 120, 30f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 4f);
+    }
+
+    /** True if any car, upgrade or cosmetic is affordable right now. */
+    static boolean canAffordSomething(Save s) {
+        for (CarDef d : Cars.ALL) {
+            if (!d.secret && !s.carOwned[d.id] && s.coins >= d.price) return true;
+        }
+        for (int i = 0; i < 4; i++) {
+            int lv = s.levels[s.selectedCar][i];
+            if (lv < CarDef.MAX_LEVEL && s.coins >= Save.upgradeCost(lv)) return true;
+        }
+        return false;
     }
 
     /** Coin counter pill anchored at its right edge. */

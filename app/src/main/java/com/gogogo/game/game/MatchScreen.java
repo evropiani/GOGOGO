@@ -51,6 +51,7 @@ public final class MatchScreen extends Screen {
             opt.forceDuck = s.devFlags[Cheats.DUCK];
             opt.slowTimer = s.devFlags[Cheats.SLOW];
             if (s.devFlags[Cheats.FEW]) opt.bots = 9;
+            opt.autopilot = s.devFlags[Cheats.AUTO];
         }
         match = new Match(System.nanoTime(), opt, s);
         view = new MatchView(game, match);
@@ -230,7 +231,7 @@ public final class MatchScreen extends Screen {
             } else {
                 p.inX = p.inZ = 0;
             }
-        } else {
+        } else if (p.bot == null) {
             p.inX = p.inZ = 0;
         }
     }
@@ -245,14 +246,22 @@ public final class MatchScreen extends Screen {
 
     // ------------------------------------------------------------------ camera / 3D
 
+    private Car lastCam;
+
     private Car camTarget() {
         Car p = match.player;
-        if (p != null && (p.alive || deadT < 1.8f)) return p;
-        if (match.winner != null) return match.winner;
-        if (specIndex >= 0 && match.cars[specIndex].alive) return match.cars[specIndex];
-        Car l = match.leader();
-        if (l != null) specIndex = l.index;
-        return l;
+        Car t;
+        if (p != null && (p.alive || deadT < 1.8f)) t = p;
+        else if (match.winner != null) t = match.winner;
+        else if (match.tie && p != null && match.tieGroup.contains(p)) t = p;
+        else if (specIndex >= 0 && match.cars[specIndex].alive) t = match.cars[specIndex];
+        else {
+            t = match.leader();
+            if (t != null) specIndex = t.index;
+        }
+        if (t == null) t = lastCam;
+        lastCam = t;
+        return t;
     }
 
     public boolean render3d() {
@@ -283,6 +292,7 @@ public final class MatchScreen extends Screen {
         if (t != null && t.falling) ty = Math.max(-25f, t.y * 0.5f);
         game.cam.fov = 55f;
         game.cam.set(camX, camH + ty, camZ + camH * 0.68f, camX, ty, camZ);
+        game.beginWorld();
         view.draw();
         return true;
     }
@@ -295,6 +305,7 @@ public final class MatchScreen extends Screen {
         float W = b.width, H = b.height, top = game.safeTop;
         Car p = match.player;
 
+        drawDanger(b, W, H);
         view.drawPopups(b);
         drawNameTags(b);
 
@@ -319,7 +330,7 @@ public final class MatchScreen extends Screen {
         b.text(b.title, al, acx - 24, top + 68, 44f, 0xFFFFFFFF, UIBatch.RIGHT, 0, 0);
         if (match.duckCollected) {
             float s = 1f + duckFlash * 0.6f;
-            drawDuckIcon(b, acx - aw / 2, top + 130, s);
+            drawDuckIcon(b, 62, top + 150, s);
         }
 
         // controls
@@ -364,6 +375,21 @@ public final class MatchScreen extends Screen {
         }
 
         if (paused) drawPause(b, ui, W, H);
+    }
+
+    /** Red pulsing edges when the timer is running out and you're on the wrong color. */
+    private void drawDanger(UIBatch b, float W, float H) {
+        Car p = match.player;
+        if (p == null || !p.alive || match.phase != Match.SHOW || match.timer > 1.6f) return;
+        Arena.Tile t = match.arena.cellAt(p.x, p.z);
+        if (t != null && t.color == match.target && t.state == Arena.PRESENT) return;
+        float pulse = 0.55f + 0.45f * (float) Math.sin(game.time * 18f);
+        int c = UIBatch.withAlpha(0xFFFF2050, 0.55f * pulse);
+        float e = 46f;
+        b.shape(W / 2, -e / 2, W + 200, e * 3, 0, c, 0, 0, 0, 60f, 0);
+        b.shape(W / 2, H + e / 2, W + 200, e * 3, 0, c, 0, 0, 0, 60f, 0);
+        b.shape(-e / 2, H / 2, e * 3, H + 200, 0, c, 0, 0, 0, 60f, 0);
+        b.shape(W + e / 2, H / 2, e * 3, H + 200, 0, c, 0, 0, 0, 60f, 0);
     }
 
     private void drawBanner(UIBatch b, float W, float top) {
@@ -439,19 +465,30 @@ public final class MatchScreen extends Screen {
         // names for cars near the camera target
         Car t = camTarget();
         if (t == null || match.phase == Match.INTRO) return;
-        float[] pr = new float[2];
-        int shown = 0;
-        for (Car c : match.cars) {
-            if (!c.alive || c == match.player || shown > 6) continue;
-            float dx = c.x - t.x, dz = c.z - t.z;
-            if (dx * dx + dz * dz > 70f) continue;
-            if (!game.cam.project(c.x, c.y + c.def.topY + 1.0f, c.z, pr)) continue;
-            b.alpha(0.85f);
-            b.text(b.body, c.name, pr[0] / b.scale, pr[1] / b.scale, 22f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 3f);
+        float[] pr = proj2;
+        for (int k = 0; k < 3; k++) {
+            Car best = null;
+            float bd = 90f;
+            for (Car c : match.cars) {
+                if (!c.alive || c == match.player || c == tagged[0] || c == tagged[1]) continue;
+                float dx = c.x - t.x, dz = c.z - t.z;
+                float d = dx * dx + dz * dz;
+                if (d < bd && d > 2f) {
+                    bd = d;
+                    best = c;
+                }
+            }
+            tagged[k] = best;
+            if (best == null || !game.cam.project(best.x, best.y + best.def.topY + 1.0f, best.z, pr)) continue;
+            b.alpha(0.75f);
+            b.text(b.body, best.name, pr[0] / b.scale, pr[1] / b.scale, 22f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 3f);
             b.alpha(1f);
-            shown++;
         }
+        tagged[0] = tagged[1] = tagged[2] = null;
     }
+
+    private final float[] proj2 = new float[2];
+    private final Car[] tagged = new Car[3];
 
     private void drawEliminated(UIBatch b, UI ui, float W, float H) {
         Car p = match.player;

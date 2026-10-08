@@ -218,17 +218,22 @@ public final class MatchView implements Match.Listener {
 
         // shadow on the floor
         Arena.Tile t = match.arena.cellAt(c.x, c.z);
-        if (t != null && (t.state == Arena.PRESENT || (t.state == Arena.FALLING && t.delay > 0) || t.state == Arena.SPAWNING)) {
+        if (t != null && t.state != Arena.GONE && !(t.state == Arena.SPAWNING && t.delay > 0)) {
             float h = c.y + c.hop - t.y;
-            float alpha = 0.45f * Math.max(0f, 1f - h / 6f);
-            r.blob(c.x, t.y + 0.04f, c.z, 1.35f, 1.35f, c.yaw, alpha);
-        } else if (t != null && t.state == Arena.FALLING) {
-            r.blob(c.x, t.y + 0.04f, c.z, 1.35f, 1.35f, c.yaw, 0.35f);
+            if (h > -0.6f) {
+                float alpha = 0.45f * Math.max(0f, 1f - h / 6f);
+                r.blob(c.x, t.y + 0.04f, c.z, 1.35f, 1.35f, c.yaw, Math.min(0.45f, alpha));
+            }
         }
 
         if (marker) {
-            M4.trs(m, c.x, c.y + d.topY + 2.4f + (float) Math.abs(Math.sin(time * 5f)) * 0.5f, c.z, time * 2f, 0, 0, 1.2f, 1.2f, 1.2f);
-            r.draw(art.marker, m, 0xFFE14D, 0xFFE14D, 0.25f);
+            M4.trs(m, c.x, c.y + d.topY + 2.6f + (float) Math.abs(Math.sin(time * 5f)) * 0.6f, c.z, time * 2.5f, 0, 0, 1.3f, 1.3f, 1.3f);
+            r.draw(art.marker, m, 0xFFE14D, 0xFFE14D, 0.3f);
+            if (t != null && !c.falling) {
+                float pulse = 1.55f + (float) Math.sin(time * 6f) * 0.08f;
+                M4.trs(m, c.x, t.y + 0.12f, c.z, 0, 0, 0, pulse, 1f, pulse);
+                r.draw(art.ring, m, 0xFFE14D, 0xFFE14D, 0.5f);
+            }
         }
     }
 

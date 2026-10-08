@@ -94,10 +94,8 @@ public final class Art {
 
         m = new MeshBuilder();
         m.paint(1f);
-        m.push().rotateX(PI / 2);
-        m.extrude(new float[]{-0.55f, 0f, 0.55f, 0f, 0f, 0.7f}, -0.18f, 0.18f);
-        m.pop();
-        m.box(0, 0.55f, 0, 0.42f, 0.7f, 0.36f, 0.1f);
+        m.lathe(new float[]{0, -0.75f, 0.62f, 0.05f, 0.62f, 0.05f, 0.5f, 0.2f, 0.5f, 0.2f, 0, 0.2f}, 4);
+        m.paint(1.1f).box(0, 0.55f, 0, 0.36f, 0.62f, 0.36f, 0.12f);
         marker = r.register(m.build());
 
         m = new MeshBuilder();
@@ -172,13 +170,13 @@ public final class Art {
     private static void buildWheel(MeshBuilder m, int style) {
         switch (style) {
             case 1: // candy
-                m.fixed(0xFF6FB5).cylinder(0, 0, 0, 1f, -0.5f, 0.5f, 0.28f, 18);
+                m.fixed(0xFF6FB5).cylinder(0, 0, 0, 1f, -0.5f, 0.5f, 0.28f, 14);
                 m.fixed(0xFFFFFF).cylinder(0, 0, 0, 0.55f, -0.54f, 0.54f, 0.08f, 14);
                 m.fixed(0xFF3B8A).box(0.25f, 0.55f, 0, 0.2f, 0.06f, 0.2f, 0.04f);
                 m.fixed(0xFF3B8A).box(0.25f, -0.55f, 0, 0.2f, 0.06f, 0.2f, 0.04f);
                 break;
             case 2: // neon
-                m.fixed(0x2B2B38).cylinder(0, 0, 0, 1f, -0.5f, 0.5f, 0.28f, 18);
+                m.fixed(0x2B2B38).cylinder(0, 0, 0, 1f, -0.5f, 0.5f, 0.28f, 14);
                 m.fixed(0x3BF0FF).cylinder(0, 0, 0, 0.62f, -0.54f, 0.54f, 0.08f, 14);
                 m.fixed(0xFF3BF0).cylinder(0, 0, 0, 0.3f, -0.58f, 0.58f, 0.06f, 10);
                 m.fixed(0x2B2B38).box(0.38f, 0.56f, 0, 0.16f, 0.06f, 0.16f, 0.04f);
@@ -195,14 +193,14 @@ public final class Art {
                 m.pop();
                 break;
             case 4: // gold
-                m.fixed(0x2B2B38).cylinder(0, 0, 0, 1f, -0.5f, 0.5f, 0.28f, 18);
+                m.fixed(0x2B2B38).cylinder(0, 0, 0, 1f, -0.5f, 0.5f, 0.28f, 14);
                 m.fixed(0xFFC83D).cylinder(0, 0, 0, 0.72f, -0.54f, 0.54f, 0.1f, 14);
                 m.fixed(0xFFF0A0).cylinder(0, 0, 0, 0.3f, -0.58f, 0.58f, 0.06f, 10);
                 m.fixed(0xC08A10).box(0.45f, 0.56f, 0, 0.16f, 0.06f, 0.16f, 0.04f);
                 m.fixed(0xC08A10).box(0.45f, -0.56f, 0, 0.16f, 0.06f, 0.16f, 0.04f);
                 break;
             default: // classic
-                m.fixed(0x2B2B38).cylinder(0, 0, 0, 1f, -0.5f, 0.5f, 0.3f, 18);
+                m.fixed(0x2B2B38).cylinder(0, 0, 0, 1f, -0.5f, 0.5f, 0.3f, 14);
                 m.fixed(0xF0F0F8).cylinder(0, 0, 0, 0.52f, -0.54f, 0.54f, 0.08f, 14);
                 m.fixed(0xFF4FA3).box(0.24f, 0.56f, 0, 0.16f, 0.06f, 0.16f, 0.04f);
                 m.fixed(0xFF4FA3).box(0.24f, -0.56f, 0, 0.16f, 0.06f, 0.16f, 0.04f);

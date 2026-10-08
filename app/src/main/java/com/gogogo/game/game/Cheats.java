@@ -6,8 +6,8 @@ import java.security.MessageDigest;
 public final class Cheats {
     private Cheats() {}
 
-    public static final int GOD = 0, FREEZE = 1, SPEED = 2, DUMB = 3, DUCK = 4, SLOW = 5, FEW = 6;
-    public static final String[] FLAG_NAME = {"Never fall", "Freeze timer", "Super speed", "Dumb bots", "Duck every match", "Double timer", "Only 10 cars"};
+    public static final int GOD = 0, FREEZE = 1, SPEED = 2, DUMB = 3, DUCK = 4, SLOW = 5, FEW = 6, AUTO = 7;
+    public static final String[] FLAG_NAME = {"Never fall", "Freeze timer", "Super speed", "Dumb bots", "Duck every match", "Double timer", "Only 10 cars", "Autopilot"};
 
     public static final int CODE_NONE = 0, CODE_CAR = 1, CODE_DEV = 2;
 
@@ -53,8 +53,8 @@ public final class Cheats {
         m.duckSpawned = true;
         m.duckCollected = false;
         m.duckLost = false;
-        m.duckX = t.x + 1.2f;
-        m.duckZ = t.z - 1.2f;
+        m.duckX = m.player.x;
+        m.duckZ = m.player.z + 0.4f;
         m.duckY = 0;
         m.duckVy = 0;
     }

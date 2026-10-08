@@ -110,6 +110,11 @@ public final class DesktopLauncher implements Platform {
                     save(t[1], w, h);
                     System.out.println("saved " + t[1]);
                     break;
+                case "flag":
+                    // developer toggles for scripted tests
+                    game.save.dev = true;
+                    game.save.devFlags[Integer.parseInt(t[1])] = true;
+                    break;
                 case "quit":
                     break;
                 default:

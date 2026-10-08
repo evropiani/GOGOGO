@@ -19,7 +19,7 @@ public final class Match {
     /** Match settings (including developer toggles). */
     public static final class Options {
         public int bots = 99;
-        public boolean god, freezeTimer, superSpeed, dumbBots, forceDuck, slowTimer;
+        public boolean god, freezeTimer, superSpeed, dumbBots, forceDuck, slowTimer, autopilot;
         public boolean attract; // title screen background (no player)
     }
 
@@ -77,6 +77,7 @@ public final class Match {
                 player.boostCooldown = 0.5f;
             }
             player.god = opt.god;
+            if (opt.autopilot) player.bot = new Bot(rng, 2);
             cars[k++] = player;
         }
         for (; k < n; k++) {

@@ -18,7 +18,8 @@ public final class RevealScreen extends Screen {
         room.show(d.id, d.defPaint, d.defAccent, 11, 4, true);
         room.pedestalColor = 0xFFD23F;
         room.pedestalAccent = 0xFF4FA3;
-        room.screenLift = 0.1f;
+        room.screenY = 0.47f;
+        room.distance = 15f;
         room.spinSpeed = 1.2f;
     }
 

@@ -122,14 +122,9 @@ public final class Game {
         gl.glClearColor(0.4f, 0.3f, 0.7f, 1f);
         gl.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT);
         r.drawSky();
+        worldBegun = false;
         if (screen.render3d()) {
-            if (shakeT > 0 && save.shake) {
-                float a = shakeAmp * (shakeT / 0.4f);
-                cam.ex += (float) Math.sin(time * 71f) * a;
-                cam.ey += (float) Math.sin(time * 53f + 1f) * a;
-                cam.tx += (float) Math.sin(time * 61f + 2f) * a * 0.5f;
-            }
-            cam.update();
+            if (!worldBegun) cam.update();
             r.flush(cam);
         }
         b.begin();
@@ -137,6 +132,21 @@ public final class Game {
         if (fadeT > 0f) drawTransition();
         b.end();
         ui.endFrame();
+    }
+
+    private boolean worldBegun;
+
+    /** Screens call this after placing the camera and before queueing geometry (applies shake, enables culling). */
+    public void beginWorld() {
+        if (shakeT > 0 && save.shake) {
+            float a = shakeAmp * (shakeT / 0.4f);
+            cam.ex += (float) Math.sin(time * 71f) * a;
+            cam.ey += (float) Math.sin(time * 53f + 1f) * a;
+            cam.tx += (float) Math.sin(time * 61f + 2f) * a * 0.5f;
+        }
+        cam.update();
+        r.setFrustum(cam);
+        worldBegun = true;
     }
 
     private void drawTransition() {

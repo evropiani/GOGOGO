@@ -32,24 +32,26 @@ public final class SettingsScreen extends Screen {
         UI ui = game.ui;
         Save s = game.save;
         float W = b.width, H = b.height, top = game.safeTop;
+        float left = game.safeLeft + 20, right = game.safeRight + 20;
         b.rect(0, 0, W, H, 0x30200040);
 
         if (!codeOpen && !confirmReset) {
-            if (ui.roundButton("back", 62, top + 66, 44, 0xFFFFFFFF)) game.setScreen(new TitleScreen(game));
-            ui.iconBack(62, top + 66 + ui.lastRoundPress, 44, 0xFF2A1840);
+            if (ui.roundButton("back", left + 40, top + 52, 38, 0xFFFFFFFF)) game.setScreen(new TitleScreen(game));
+            ui.iconBack(left + 40, top + 52 + ui.lastRoundPress, 38, 0xFF2A1840);
         }
-        b.textShadow(b.title, "SETTINGS", W / 2, top + 68, 64f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 6f, 6f, 0x50200040);
+        b.textShadow(b.title, "SETTINGS", left + 100, top + 56, 56f, 0xFFFFFFFF, UIBatch.LEFT, 0xFF2A1840, 6f, 6f, 0x50200040);
 
-        float px = 40, pw = W - 80, py = top + 140;
-        String[] labels = {"Sound", "Music", "Vibration", "Camera shake", "Color symbols", "Boost on left"};
-        float rowH = 92;
-        float ph = labels.length * rowH + 40;
+        // toggles (left)
+        float px = left + 20, pw = Math.min(700f, W * 0.52f), py = top + 110;
+        String[] labels = {"Sound", "Music", "Vibration", "Camera shake", "Color symbols", "Swap controls"};
+        float rowH = 84;
+        float ph = labels.length * rowH + 24;
         ui.panel(px, py, pw, ph, 0xFFFFFFFF);
         boolean[] vals = {s.sound, s.music, s.vibration, s.shake, s.symbols, s.leftHanded};
         for (int i = 0; i < labels.length; i++) {
-            float y = py + 20 + i * rowH + rowH / 2;
-            b.text(b.title, labels[i], px + 40, y, 40f, 0xFF2A1840, UIBatch.LEFT, 0, 0);
-            boolean nv = ui.toggle("tg" + i, px + pw - 170, y - 32, 130, 64, vals[i]);
+            float y = py + 12 + i * rowH + rowH / 2;
+            b.text(b.title, labels[i], px + 36, y, 38f, 0xFF2A1840, UIBatch.LEFT, 0, 0);
+            boolean nv = ui.toggle("tg" + i, px + pw - 160, y - 30, 124, 60, vals[i]);
             if (nv != vals[i]) {
                 switch (i) {
                     case 0: s.sound = nv; break;
@@ -62,24 +64,27 @@ public final class SettingsScreen extends Screen {
                 s.markDirty();
                 s.flush();
             }
-            if (i < labels.length - 1) b.rect(px + 30, py + 20 + (i + 1) * rowH, pw - 60, 3, 0x152A1840);
+            if (i < labels.length - 1) b.rect(px + 28, py + 12 + (i + 1) * rowH, pw - 56, 3, 0x152A1840);
         }
 
-        float by = py + ph + 30;
-        if (ui.button("code", px, by, pw, 110, 0xFF8E62FF, "ENTER CODE", 52f)) {
+        // buttons (right)
+        float rx = px + pw + 40, rw = W - right - rx;
+        float bw = Math.min(460f, rw), bx = rx + (rw - bw) / 2;
+        float by = py;
+        if (ui.button("code", bx, by, bw, 110, 0xFF8E62FF, "ENTER CODE", 50f)) {
             codeOpen = true;
             code.setLength(0);
         }
         by += 130;
         if (s.dev) {
-            if (ui.button("dev", px, by, pw, 110, 0xFFFFC21F, "CHEATS", 52f)) game.setScreen(new CheatScreen(game));
+            if (ui.button("dev", bx, by, bw, 110, 0xFFFFC21F, "CHEATS", 50f)) game.setScreen(new CheatScreen(game));
             by += 130;
         }
-        if (ui.button("reset", px + pw / 2 - 170, by, 340, 90, 0xFFFF4FA3, "RESET PROGRESS", 34f)) confirmReset = true;
+        if (ui.button("reset", bx + bw / 2 - 170, by, 340, 88, 0xFFFF4FA3, "RESET PROGRESS", 32f)) confirmReset = true;
 
-        float cy = H - game.safeBottom - 120;
-        b.text(b.body, "GO! GO! GO!  v" + Version.NAME, W / 2, cy, 28f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 3f);
-        b.text(b.body, "Fonts: Luckiest Guy (Apache 2.0), Lilita One (OFL)", W / 2, cy + 40, 22f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 3f);
+        float cy = H - game.safeBottom - 70;
+        b.text(b.body, "GO! GO! GO!  v" + Version.NAME, rx + rw / 2, cy, 26f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 3f);
+        b.textFit(b.body, "Fonts: Luckiest Guy (Apache 2.0), Lilita One (OFL)", rx + rw / 2, cy + 36, 21f, rw, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 3f);
 
         if (codeOpen) codePanel(b, ui, W, H);
         if (confirmReset) resetPanel(b, ui, W, H);
@@ -88,35 +93,35 @@ public final class SettingsScreen extends Screen {
     private void codePanel(UIBatch b, UI ui, float W, float H) {
         b.rect(0, 0, W, H, 0xA0200040);
         ui.block(0, 0, W, H);
-        float pw = W - 40, ph = 820;
-        float px = 20, py = H / 2 - ph / 2;
+        float pw = Math.min(1000f, W - 40), ph = 680;
+        float px = W / 2 - pw / 2, py = H / 2 - ph / 2;
         ui.panel(px, py, pw, ph, 0xFFFFFFFF);
-        b.text(b.title, "SECRET CODE", W / 2, py + 70, 60f, 0xFF8E62FF, UIBatch.CENTER, 0xFF2A1840, 4f);
+        b.text(b.title, "SECRET CODE", W / 2, py + 50, 52f, 0xFF8E62FF, UIBatch.CENTER, 0xFF2A1840, 4f);
         float sx = shakeT > 0 ? (float) Math.sin(t * 70f) * 16f * shakeT / 0.5f : 0f;
-        b.shape(W / 2 + sx, py + 170, pw - 80, 100, 26, 0xFF2A1840, 0, 0, 0, 0, 0);
-        String shown = code.length() == 0 ? "" : code.toString();
+        float fw = Math.min(620f, pw - 80);
+        b.shape(W / 2 + sx, py + 125, fw, 82, 24, 0xFF2A1840, 0, 0, 0, 0, 0);
         boolean caret = ((int) (t * 2)) % 2 == 0;
-        b.textFit(b.title, shown + (caret && code.length() < 14 ? "_" : ""), W / 2 + sx, py + 172, 60f, pw - 120, 0xFFFFE14D, UIBatch.CENTER, 0, 0);
+        b.textFit(b.title, code + (caret && code.length() < 14 ? "_" : ""), W / 2 + sx, py + 127, 54f, fw - 40, 0xFFFFE14D, UIBatch.CENTER, 0, 0);
         if (msgT > 0) {
             b.alpha(Math.min(1f, msgT * 2f));
-            b.text(b.title, msg, W / 2, py + 255, 40f, msgColor, UIBatch.CENTER, 0xFF2A1840, 3f);
+            b.text(b.title, msg, W / 2, py + 190, 36f, msgColor, UIBatch.CENTER, 0xFF2A1840, 3f);
             b.alpha(1f);
         }
 
         // keyboard
-        float ky = py + 310;
-        float kw = (pw - 40) / 10f, kh = 92;
-        String digits = "1234567890";
-        drawKeyRow(b, ui, digits, px + 20, ky, kw, kh);
+        float ky = py + 222;
+        float kw = Math.min(86f, (pw - 40) / 10f), kh = 72;
+        float kx0 = W / 2 - kw * 5;
+        drawKeyRow(b, ui, "1234567890", kx0, ky, kw, kh);
         for (int r = 0; r < ROWS.length; r++) {
             String row = ROWS[r];
-            float rx = px + 20 + (10 - row.length()) * kw / 2;
-            drawKeyRow(b, ui, row, rx, ky + (r + 1) * (kh + 8), kw, kh);
+            drawKeyRow(b, ui, row, kx0 + (10 - row.length()) * kw / 2, ky + (r + 1) * (kh + 6), kw, kh);
         }
-        float fy = ky + 4 * (kh + 8) + 10;
-        if (ui.button("kdel", px + 30, fy, 200, 96, 0xFFFF4FA3, "DEL", 40f) && code.length() > 0) code.setLength(code.length() - 1);
-        if (ui.button("kclose", px + 245, fy, 200, 96, 0xFFB8B0C8, "CLOSE", 40f)) codeOpen = false;
-        if (ui.button("kok", px + pw - 230, fy, 200, 96, 0xFF34D058, "OK", 46f)) submit();
+        float fy = ky + 4 * (kh + 6) + 6;
+        float bw2 = 200;
+        if (ui.button("kdel", W / 2 - bw2 * 1.5f - 20, fy, bw2, 84, 0xFFFF4FA3, "DEL", 38f) && code.length() > 0) code.setLength(code.length() - 1);
+        if (ui.button("kclose", W / 2 - bw2 / 2, fy, bw2, 84, 0xFFB8B0C8, "CLOSE", 38f)) codeOpen = false;
+        if (ui.button("kok", W / 2 + bw2 / 2 + 20, fy, bw2, 84, 0xFF34D058, "OK", 44f)) submit();
     }
 
     private void drawKeyRow(UIBatch b, UI ui, String keys, float x, float y, float kw, float kh) {
@@ -173,12 +178,12 @@ public final class SettingsScreen extends Screen {
     private void resetPanel(UIBatch b, UI ui, float W, float H) {
         b.rect(0, 0, W, H, 0xA0200040);
         ui.block(0, 0, W, H);
-        float pw = 600, ph = 400, px = W / 2 - pw / 2, py = H / 2 - ph / 2;
+        float pw = 640, ph = 380, px = W / 2 - pw / 2, py = H / 2 - ph / 2;
         ui.panel(px, py, pw, ph, 0xFFFFFFFF);
-        b.text(b.title, "RESET ALL?", W / 2, py + 80, 64f, 0xFFFF4FA3, UIBatch.CENTER, 0xFF2A1840, 4f);
-        b.text(b.body, "Coins, cars and upgrades will be gone.", W / 2, py + 160, 30f, 0xFF7A6A90, UIBatch.CENTER, 0, 0);
-        if (ui.button("rno", px + 40, py + 240, 250, 110, 0xFF34D058, "NO!", 50f)) confirmReset = false;
-        if (ui.button("ryes", px + pw - 290, py + 240, 250, 110, 0xFFFF4FA3, "YES", 50f)) {
+        b.text(b.title, "RESET ALL?", W / 2, py + 75, 62f, 0xFFFF4FA3, UIBatch.CENTER, 0xFF2A1840, 4f);
+        b.text(b.body, "Coins, cars and upgrades will be gone.", W / 2, py + 150, 30f, 0xFF7A6A90, UIBatch.CENTER, 0, 0);
+        if (ui.button("rno", px + 50, py + 225, 250, 110, 0xFF34D058, "NO!", 50f)) confirmReset = false;
+        if (ui.button("ryes", px + pw - 300, py + 225, 250, 110, 0xFFFF4FA3, "YES", 50f)) {
             boolean dev = game.save.dev;
             game.save.reset();
             game.save.dev = dev;

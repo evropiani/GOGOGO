@@ -136,12 +136,12 @@ public final class UIBatch {
         boundTex = -1;
     }
 
-    /** Sets up a frame. virtualWidth is the design width in UI units. */
-    public void resize(int pixelW, int pixelH, float virtualWidth) {
+    /** Sets up the UI space: the shorter screen side spans virtualShort UI units. */
+    public void resize(int pixelW, int pixelH, float virtualShort) {
         this.pixelW = pixelW;
         this.pixelH = pixelH;
-        scale = pixelW / virtualWidth;
-        width = virtualWidth;
+        scale = Math.min(pixelW, pixelH) / virtualShort;
+        width = pixelW / scale;
         height = pixelH / scale;
     }
 

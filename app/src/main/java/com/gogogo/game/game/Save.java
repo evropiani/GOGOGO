@@ -25,6 +25,8 @@ public final class Save {
 
     // settings
     public boolean sound = true, music = true, vibration = true, shake = true, symbols = true, leftHanded = false;
+    /** Match camera: 0 near, 1 far, 2 hood. */
+    public int camMode = 1;
 
     // stats
     public int matches, wins, bestPlace = 0, bonks, roundsSurvived, ties;
@@ -129,6 +131,7 @@ public final class Save {
         shake = geti(p, "shake", 1) == 1;
         symbols = geti(p, "symbols", 1) == 1;
         leftHanded = geti(p, "lefty", 0) == 1;
+        camMode = clamp(geti(p, "cam", 1), 0, 2);
         matches = geti(p, "matches", 0);
         wins = geti(p, "wins", 0);
         ties = geti(p, "ties", 0);
@@ -165,6 +168,7 @@ public final class Save {
         put(sb, "shake", shake ? 1 : 0);
         put(sb, "symbols", symbols ? 1 : 0);
         put(sb, "lefty", leftHanded ? 1 : 0);
+        put(sb, "cam", camMode);
         put(sb, "matches", matches);
         put(sb, "wins", wins);
         put(sb, "ties", ties);

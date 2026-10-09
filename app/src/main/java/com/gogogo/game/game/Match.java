@@ -77,6 +77,7 @@ public final class Match {
                 player.boostCooldown = 0.5f;
             }
             player.god = opt.god;
+            player.manual = true;
             if (opt.autopilot) player.bot = new Bot(rng, 2);
             cars[k++] = player;
         }
@@ -138,7 +139,7 @@ public final class Match {
     }
 
     public float timeFor(int round) {
-        float t = 6.5f;
+        float t = 7.0f;
         for (int i = 2; i <= round; i++) if (i % 3 != 0) t *= 0.92f;
         float min = alive <= 10 ? 1.6f : 2.0f;
         t = Math.max(min, t);

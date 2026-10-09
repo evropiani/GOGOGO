@@ -40,10 +40,10 @@ public final class TitleScreen extends Screen {
     }
 
     public boolean render3d() {
-        float r = 62f;
+        float r = 66f;
         float cx = (float) Math.sin(camAngle) * r, cz = (float) Math.cos(camAngle) * r;
-        game.cam.fov = 55f;
-        game.cam.set(cx, 52f, cz, 0, -6f, 0);
+        game.cam.fov = 48f;
+        game.cam.set(cx, 40f, cz, 0, -4f, 0);
         game.beginWorld();
         view.draw();
         return true;
@@ -54,51 +54,54 @@ public final class TitleScreen extends Screen {
         UI ui = game.ui;
         float W = b.width, H = b.height;
         float top = game.safeTop;
+        float lx = W * 0.27f; // logo column
+        float rx = W * 0.72f; // button column
 
-        // soft vignette band behind the logo for readability
-        b.shadow(-40, top + 120, W + 80, 520, 200, 0x40200040, 120);
+        // soft glow behind the logo for readability
+        b.shadow(lx - 330, top + 60, 660, 520, 240, 0x40200040, 120);
 
-        // logo: three bouncing GO!s
+        // logo: three bouncing GO!s marching down the left side
         int[] cols = {0xFFFF4FA3, 0xFFFFE14D, 0xFF3BE0FF};
         for (int i = 0; i < 3; i++) {
             float appear = Ease.outBack(Math.min(1f, Math.max(0f, (t - i * 0.18f) * 2.2f)));
-            float bounce = (float) Math.abs(Math.sin(t * 3.2f + i * 0.9f)) * 14f;
-            float x = W / 2 + (i - 1) * 150f;
-            float y = top + 230 + i * 120 - bounce;
-            float size = 150f * appear;
-            if (size > 1f) b.textShadow(b.title, "GO!", x + (i - 1) * 40f, y, size, cols[i], UIBatch.CENTER, 0xFF2A1840, 14f, 12f, 0x70200040);
+            float bounce = (float) Math.abs(Math.sin(t * 3.2f + i * 0.9f)) * 12f;
+            float x = lx + (i - 1) * 120f;
+            float y = top + 140 + i * 125 - bounce;
+            float size = 140f * appear;
+            if (size > 1f) b.textShadow(b.title, "GO!", x, y, size, cols[i], UIBatch.CENTER, 0xFF2A1840, 13f, 11f, 0x70200040);
         }
         String tag = "100 cars. 1 color. 0 chill.";
-        float tw = b.body.width(tag, 36f) + 60;
-        b.shape(W / 2, top + 642, tw, 64, 32, 0xC02A1840, 0, 0, 0, 0, 0);
-        b.text(b.body, tag, W / 2, top + 642, 36f, 0xFFFFFFFF, UIBatch.CENTER, 0, 0);
+        float tw = b.body.width(tag, 34f) + 60;
+        b.shape(lx, top + 545, tw, 62, 31, 0xC02A1840, 0, 0, 0, 0, 0);
+        b.text(b.body, tag, lx, top + 545, 34f, 0xFFFFFFFF, UIBatch.CENTER, 0, 0);
 
         // coins pill
-        coinPill(game, W - 24, top + 52);
+        coinPill(game, W - game.safeRight - 24, top + 52);
 
         // buttons
-        float by = H - game.safeBottom - 470;
+        float by = H * 0.43f;
         float pulse = 1f + (float) Math.sin(t * 5f) * 0.03f;
-        float bw = 470 * pulse, bh = 150 * pulse;
-        if (ui.button("play", W / 2 - bw / 2, by - bh / 2, bw, bh, 0xFF34D058, "PLAY!", 84f)) {
+        float bw = 460 * pulse, bh = 150 * pulse;
+        if (ui.button("play", rx - bw / 2, by - bh / 2, bw, bh, 0xFF34D058, "PLAY!", 84f)) {
             game.setScreen(new MatchScreen(game));
         }
-        if (ui.button("garage", W / 2 - 300, by + 120, 290, 120, 0xFF8E62FF, "GARAGE", 50f)) {
+        float sy = by + 110;
+        if (ui.button("garage", rx - 280, sy, 270, 116, 0xFF8E62FF, "GARAGE", 48f)) {
             game.setScreen(new GarageScreen(game));
         }
         if (canAffordSomething(game.save)) {
-            float bx = W / 2 - 30, byy = by + 128;
+            float bx = rx - 24, byy = sy + 8;
             float s2 = 1f + (float) Math.abs(Math.sin(t * 4f)) * 0.15f;
             b.circle(bx, byy + 3, 24 * s2, 0x50200040);
             b.shape(bx, byy, 48 * s2, 48 * s2, 24 * s2, 0xFFFF3B5C, 0xFFFFFFFF, 4f, 0.4f, 0, 0);
             b.text(b.title, "!", bx, byy + 1, 34f * s2, 0xFFFFFFFF, UIBatch.CENTER, 0, 0);
         }
-        if (ui.button("settings", W / 2 + 10, by + 120, 290, 120, 0xFF3BA8FF, "SETTINGS", 50f)) {
+        if (ui.button("settings", rx + 10, sy, 270, 116, 0xFF3BA8FF, "SETTINGS", 48f)) {
             game.setScreen(new SettingsScreen(game));
         }
         Save s = game.save;
         String stats = "WINS " + s.wins + "   MATCHES " + s.matches + (s.bestPlace > 0 ? "   BEST #" + s.bestPlace : "");
-        b.text(b.body, stats, W / 2, H - game.safeBottom - 120, 30f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 4f);
+        b.text(b.body, stats, rx, H - game.safeBottom - 60, 30f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 4f);
     }
 
     /** True if any car, upgrade or cosmetic is affordable right now. */

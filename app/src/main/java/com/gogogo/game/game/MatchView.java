@@ -11,6 +11,8 @@ public final class MatchView implements Match.Listener {
     public Match match;
     public final Particles fx = new Particles();
     public boolean quiet; // title-screen background: no sounds / shakes
+    /** The car whose hood the camera sits on: drawn without topper and markers. */
+    public Car hoodCar;
 
     private final float[] base = new float[16], m = new float[16], tmp = new float[16];
     private final float[] cloudX = new float[14], cloudY = new float[14], cloudZ = new float[14], cloudS = new float[14];
@@ -214,7 +216,8 @@ public final class MatchView implements Match.Listener {
         Renderer r = game.r;
         Art art = game.art;
         CarDef d = c.def;
-        CarRenderer.draw(r, art, c, time, base, m);
+        CarRenderer.draw(r, art, c, time, base, m, c != hoodCar);
+        if (c == hoodCar) marker = false;
 
         // shadow on the floor
         Arena.Tile t = match.arena.cellAt(c.x, c.z);

@@ -11,7 +11,8 @@ import com.gogogo.game.engine.UIBatch;
 
 /** Root object: owns the engine services, persistent profile and the active screen. */
 public final class Game {
-    public static final float UI_WIDTH = 720f;
+    /** The shorter screen side is this many UI units (the game runs in landscape). */
+    public static final float UI_SHORT = 720f;
 
     public final Platform platform;
     public final GL gl;
@@ -25,8 +26,8 @@ public final class Game {
     public Save save;
 
     public int width = 1, height = 1;
-    /** Safe area in UI units. */
-    public float safeTop, safeBottom;
+    /** Safe area (notches, rounded corners) in UI units. */
+    public float safeTop, safeBottom, safeLeft, safeRight;
     public float time;
 
     private Screen screen, pending;
@@ -75,9 +76,15 @@ public final class Game {
         gl.glViewport(0, 0, width, height);
         cam.width = width;
         cam.height = height;
-        b.resize(width, height, UI_WIDTH);
+        b.resize(width, height, UI_SHORT);
+        readInsets();
+    }
+
+    private void readInsets() {
         safeTop = platform.safeInsetTop() / b.scale;
         safeBottom = platform.safeInsetBottom() / b.scale;
+        safeLeft = platform.safeInsetLeft() / b.scale;
+        safeRight = platform.safeInsetRight() / b.scale;
     }
 
     public void onDrawFrame() {
@@ -91,7 +98,9 @@ public final class Game {
 
     public void step(float dt) {
         time += dt;
+        readInsets(); // the notch moves sides when the phone is flipped
         input.poll(b.scale, dt);
+        if (fadeDir == 0) screen.preInput();
         ui.frame(dt);
 
         if (input.backPressed() && fadeDir == 0) {

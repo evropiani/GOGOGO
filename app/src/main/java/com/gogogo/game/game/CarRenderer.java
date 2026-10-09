@@ -9,6 +9,10 @@ public final class CarRenderer {
 
     /** base and m are scratch matrices; base receives the body transform. */
     public static void draw(Renderer r, Art art, Car c, float time, float[] base, float[] m) {
+        draw(r, art, c, time, base, m, true);
+    }
+
+    public static void draw(Renderer r, Art art, Car c, float time, float[] base, float[] m, boolean topper) {
         CarDef d = c.def;
         int paint = Palette.paintColor(c.paint, time);
         int accent = Palette.paintColor(c.accent, time + 1.3f);
@@ -31,7 +35,7 @@ public final class CarRenderer {
             r.draw(art.wheels[c.wheel], m, paint, accent, c.flash * 0.4f);
         }
 
-        if (c.topper > 0) {
+        if (topper && c.topper > 0) {
             M4.copy(base, m);
             M4.postTranslate(m, 0, d.topY, d.topZ);
             M4.postRotX(m, c.topZ * 0.9f);

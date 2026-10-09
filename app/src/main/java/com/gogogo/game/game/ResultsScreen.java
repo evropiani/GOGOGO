@@ -66,7 +66,9 @@ public final class ResultsScreen extends Screen {
 
         room = new Showroom(game);
         room.showSaved(s.selectedCar);
-        room.screenY = 0.36f;
+        room.screenY = 0.58f;
+        room.screenX = 0.27f;
+        room.distance = 15f;
         if (won || tied) room.pedestalColor = 0xFFD23F;
     }
 
@@ -100,47 +102,55 @@ public final class ResultsScreen extends Screen {
         UIBatch b = game.b;
         UI ui = game.ui;
         float W = b.width, H = b.height, top = game.safeTop;
+        float left = game.safeLeft + 20, right = game.safeRight + 20, bottom = H - game.safeBottom;
+        float lcx = left + (W * 0.5f - left) / 2f; // left column center (car side)
 
         String head = won ? "WINNER!" : (tied ? "TIE!" : "#" + place);
         int col = won ? 0xFFFFE14D : (tied ? 0xFF3BE0FF : 0xFFFFFFFF);
         float sc = Ease.outElastic(Math.min(1f, t * 1.5f));
-        float hs = Math.min(130f, 150f * (W - 200) / Math.max(1f, b.title.width(head, 150f)));
-        b.textShadow(b.title, head, W / 2, top + 175, hs * sc, col, UIBatch.CENTER, 0xFF2A1840, 13f, 12f, 0x70200040);
+        float hs = Math.min(130f, 150f * (W * 0.46f) / Math.max(1f, b.title.width(head, 150f)));
+        b.textShadow(b.title, head, lcx, top + 95, hs * sc, col, UIBatch.CENTER, 0xFF2A1840, 12f, 11f, 0x70200040);
         String sub = won ? "Last car rolling!" : (tied ? "Everyone fell. Everyone wins?" : "out of " + total + " cars");
-        b.text(b.body, sub, W / 2, top + 270, 36f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 5f);
-        TitleScreen.coinPill(game, W - 24, top + 52);
+        b.text(b.body, sub, lcx, top + 182, 34f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 5f);
+        TitleScreen.coinPill(game, W - right, top + 52);
         if (newBest && t > 1f) {
             float k2 = Ease.outBack(Math.min(1f, (t - 1f) * 3f));
-            b.shape(W / 2 + 150, top + 110, 170 * k2, 56 * k2, 28, 0xFFFF3B5C, 0xFFFFFFFF, 4f, 0.4f, 0, 0f);
-            b.text(b.title, "NEW BEST!", W / 2 + 150, top + 112, 28f * k2, 0xFFFFFFFF, UIBatch.CENTER, 0, 0);
+            float bx = lcx + Math.min(260f, b.title.width(head, hs) / 2 + 80);
+            b.shape(bx, top + 40, 170 * k2, 54 * k2, 27, 0xFFFF3B5C, 0xFFFFFFFF, 4f, 0.4f, 0, 0f);
+            b.text(b.title, "NEW BEST!", bx, top + 42, 27f * k2, 0xFFFFFFFF, UIBatch.CENTER, 0, 0);
         }
 
-        // reward panel
-        float pw = 620, ph = 120 + rewardCount * 56 + 40;
-        float px = W / 2 - pw / 2, py = H - game.safeBottom - 300 - ph;
+        // reward panel (right column)
+        float rx = W * 0.5f + 10, rw = W - right - rx;
+        float pw = Math.min(640f, rw), px = rx + (rw - pw) / 2;
+        float rowH = 50;
+        float ph = 40 + rewardCount * rowH + 80;
+        float py = top + 100;
         float k = Ease.outBack(Math.min(1f, Math.max(0f, (t - 0.3f) * 2.5f)));
-        py += (1 - k) * 600;
+        px += (1 - k) * 700;
         ui.panel(px, py, pw, ph, 0xFFFFFFFF);
         for (int i = 0; i < rewardCount; i++) {
-            float y = py + 50 + i * 56;
-            b.text(b.body, rewardName[i], px + 40, y, 34f, 0xFF2A1840, UIBatch.LEFT, 0, 0);
-            b.text(b.title, "+" + rewardVal[i], px + pw - 80, y, 38f, 0xFFE89A00, UIBatch.RIGHT, 0, 0);
-            ui.coin(px + pw - 50, y, 16);
+            float y = py + 42 + i * rowH;
+            b.text(b.body, rewardName[i], px + 36, y, 32f, 0xFF2A1840, UIBatch.LEFT, 0, 0);
+            b.text(b.title, "+" + rewardVal[i], px + pw - 76, y, 36f, 0xFFE89A00, UIBatch.RIGHT, 0, 0);
+            ui.coin(px + pw - 48, y, 16);
         }
-        float ty = py + ph - 60;
-        b.roundRect(px + 30, ty - 34, pw - 60, 4, 2, 0x202A1840);
-        b.text(b.title, "TOTAL", px + 40, ty, 44f, 0xFF8E62FF, UIBatch.LEFT, 0, 0);
-        b.text(b.title, "+" + (int) shown, px + pw - 80, ty, 52f, 0xFFE89A00, UIBatch.RIGHT, 0xFF2A1840, 3f);
-        ui.coin(px + pw - 46, ty, 22);
+        float ty = py + ph - 46;
+        b.roundRect(px + 28, ty - 32, pw - 56, 4, 2, 0x202A1840);
+        b.text(b.title, "TOTAL", px + 36, ty, 42f, 0xFF8E62FF, UIBatch.LEFT, 0, 0);
+        b.text(b.title, "+" + (int) shown, px + pw - 76, ty, 50f, 0xFFE89A00, UIBatch.RIGHT, 0xFF2A1840, 3f);
+        ui.coin(px + pw - 44, ty, 22);
 
-        float by = H - game.safeBottom - 250;
-        if (ui.button("again", W / 2 - 300, by, 600, 130, 0xFF34D058, "PLAY AGAIN", 64f)) {
+        float bw = Math.min(600f, rw);
+        float bx = rx + (rw - bw) / 2;
+        float by = bottom - 250;
+        if (ui.button("again", bx, by, bw, 124, 0xFF34D058, "PLAY AGAIN", 60f)) {
             leave(new MatchScreen(game));
         }
-        if (ui.button("menu", W / 2 - 300, by + 150, 290, 100, 0xFF8E62FF, "MENU", 44f)) {
+        if (ui.button("menu", bx, by + 140, bw / 2 - 10, 96, 0xFF8E62FF, "MENU", 42f)) {
             leave(new TitleScreen(game));
         }
-        if (ui.button("garage", W / 2 + 10, by + 150, 290, 100, 0xFFFF9A2B, "GARAGE", 44f)) {
+        if (ui.button("garage", bx + bw / 2 + 10, by + 140, bw / 2 - 10, 96, 0xFFFF9A2B, "GARAGE", 42f)) {
             leave(new GarageScreen(game));
         }
     }

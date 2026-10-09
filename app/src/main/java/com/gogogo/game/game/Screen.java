@@ -12,6 +12,9 @@ public abstract class Screen {
 
     public void exit() {}
 
+    /** Runs right after input polling, before UI widgets see the touches (claim gameplay touches here). */
+    public void preInput() {}
+
     public abstract void update(float dt);
 
     /** Queue 3D geometry and set up the camera. Return false to skip the 3D pass. */

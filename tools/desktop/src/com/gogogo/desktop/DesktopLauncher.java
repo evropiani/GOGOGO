@@ -27,7 +27,7 @@ import javax.imageio.ImageIO;
  *
  * Usage: DesktopLauncher <assetsDir> <width> <height> "<script>"
  * Script commands (separated by ';'): wait N | tap X Y | down X Y | move X Y | up |
- * back | shot FILE | seed N | quit. Coordinates are UI units (720 wide).
+ * back | shot FILE | flag N | quit. Coordinates are UI units (the short side is 720).
  */
 public final class DesktopLauncher implements Platform {
     private final File assets;
@@ -70,7 +70,7 @@ public final class DesktopLauncher implements Platform {
         game.onSurfaceChanged(w, h);
 
         float dt = 1f / 60f;
-        float scale = w / 720f;
+        float scale = Math.min(w, h) / 720f;
         for (String raw : script.split(";")) {
             String[] t = raw.trim().split("\\s+");
             if (t.length == 0 || t[0].isEmpty()) continue;
@@ -222,6 +222,14 @@ public final class DesktopLauncher implements Platform {
     }
 
     public int safeInsetBottom() {
+        return 0;
+    }
+
+    public int safeInsetLeft() {
+        return Integer.getInteger("insetLeft", 0);
+    }
+
+    public int safeInsetRight() {
         return 0;
     }
 

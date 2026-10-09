@@ -38,6 +38,7 @@ public final class Art {
             m = new MeshBuilder();
             Cars.ALL[i].build(m);
             cars[i] = r.register(m.build());
+            placeHoodCamera(Cars.ALL[i], cars[i]);
         }
 
         for (int i = 0; i < wheels.length; i++) {
@@ -112,6 +113,18 @@ public final class Art {
         m = new MeshBuilder();
         m.paint(1f).push().rotateX(PI / 2).extrude(starPoly2(10, 1f, 0.6f), -0.1f, 0.1f).pop();
         bonk = r.register(m.build());
+    }
+
+    /** Puts the hood camera over the middle of the car, just above its roof, so the hood shows below. */
+    private static void placeHoodCamera(CarDef d, Mesh body) {
+        float top = 0f;
+        float[] v = body.vertices;
+        for (int k = 0; k < v.length; k += Mesh.VERTEX_FLOATS) {
+            float z = v[k + 2];
+            if (z > -0.3f && z < 0.6f && Math.abs(v[k]) < 0.6f) top = Math.max(top, v[k + 1]);
+        }
+        d.hoodY = Math.max(1.3f, top) + 0.3f;
+        d.hoodZ = 0f;
     }
 
     // ------------------------------------------------------------------ shapes

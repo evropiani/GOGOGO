@@ -49,7 +49,7 @@ public final class GoActivity extends Activity implements Platform {
     private SharedPreferences prefs;
     private Vibrator vibrator;
     private final Handler main = new Handler(Looper.getMainLooper());
-    private volatile int insetTop, insetBottom;
+    private volatile int insetTop, insetBottom, insetLeft, insetRight;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -155,6 +155,10 @@ public final class GoActivity extends Activity implements Platform {
             if (cut != null) {
                 insetTop = (Integer) cut.getClass().getMethod("getSafeInsetTop").invoke(cut);
                 insetBottom = (Integer) cut.getClass().getMethod("getSafeInsetBottom").invoke(cut);
+                insetLeft = (Integer) cut.getClass().getMethod("getSafeInsetLeft").invoke(cut);
+                insetRight = (Integer) cut.getClass().getMethod("getSafeInsetRight").invoke(cut);
+            } else {
+                insetTop = insetBottom = insetLeft = insetRight = 0;
             }
         } catch (Throwable ignored) {
         }
@@ -345,6 +349,14 @@ public final class GoActivity extends Activity implements Platform {
 
     public int safeInsetBottom() {
         return insetBottom;
+    }
+
+    public int safeInsetLeft() {
+        return insetLeft;
+    }
+
+    public int safeInsetRight() {
+        return insetRight;
     }
 
     public void exit() {

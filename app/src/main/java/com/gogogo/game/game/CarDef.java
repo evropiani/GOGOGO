@@ -19,6 +19,8 @@ public abstract class CarDef {
     public float wheelR = 0.4f, wheelW = 0.34f, wheelX = 0.8f, wheelZf = 0.8f, wheelZr = -0.8f;
     public float topY = 1.6f, topZ = 0f;
     public float radius = 1.15f;
+    /** Hood camera position (computed from the body mesh in Art). */
+    public float hoodY = 1.8f, hoodZ = 0.6f;
 
     protected CarDef(int id, String name, String blurb, int price, float speed, float grip, float boost, float weight, int defPaint, int defAccent) {
         this.id = id;

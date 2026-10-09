@@ -5,21 +5,28 @@ import com.gogogo.game.engine.Input;
 import com.gogogo.game.engine.UI;
 import com.gogogo.game.engine.UIBatch;
 
-/** The actual game: HUD, controls, spectating, pause. */
+/** The actual game (landscape): HUD, steering/pedal buttons, camera modes, spectating, pause. */
 public final class MatchScreen extends Screen {
-    private static final int OWNER_STICK = 2, OWNER_BOOST = 3;
+    private static final int OWNER_CTRL = 2;
+    private static final int C_LEFT = 0, C_RIGHT = 1, C_BRAKE = 2, C_GAS = 3, C_BOOST = 4;
+    public static final String[] CAM_NAME = {"NEAR", "FAR", "HOOD"};
 
     private final Match match;
     private final MatchView view;
     private final Match.Options opt;
 
     private boolean paused;
-    private float camX, camZ, camH = 30f;
+    private boolean camMenu;
+    private float menuX, menuY; // camera menu area: x > menuX and y < menuY
+    private final boolean[] held = new boolean[5];
+    private final float[] press = new float[5];
+    private final float[] cx = new float[5], cy = new float[5];
+
+    // camera state
     private boolean camInit;
-    private Input.Pointer stick;
-    private float stickX, stickY; // base position
-    private float knobX, knobY;
-    private float boostPress;
+    private float camYaw;
+    private float ex, ey, ez, tx, ty, tz;
+    private float orbit;
 
     // announcements
     private String bigText;
@@ -38,6 +45,8 @@ public final class MatchScreen extends Screen {
     private int lastAliveAnnounce = 100;
     private float duckFlash;
     private boolean resultsShown;
+    private float hintT;
+    private boolean usedGas;
 
     private static final String[] SAFE_WORDS = {"SAFE!", "PHEW!", "NICE!", "CLUTCH!", "COZY!"};
 
@@ -122,8 +131,6 @@ public final class MatchScreen extends Screen {
                     s.play(Sfx.LOSE, 0.9f, 1f);
                 }
                 break;
-            case Match.EV_LAST_ONE:
-                break;
             case Match.EV_WIN:
                 overT = 0;
                 if (a == match.player) {
@@ -147,11 +154,90 @@ public final class MatchScreen extends Screen {
         }
     }
 
+    // ------------------------------------------------------------------ controls
+
+    private boolean controlsActive() {
+        Car p = match.player;
+        return p != null && p.alive && !paused && match.phase != Match.OVER && !skipping;
+    }
+
+    /** Lays out the five control centers for the current screen size and handedness. */
+    private void layoutControls() {
+        UIBatch b = game.b;
+        float W = b.width, H = b.height;
+        float left = game.safeLeft + 20, right = game.safeRight + 20, bottom = H - game.safeBottom;
+        cx[C_LEFT] = left + 100;
+        cx[C_RIGHT] = left + 290;
+        cy[C_LEFT] = cy[C_RIGHT] = bottom - 120;
+        cx[C_GAS] = W - right - 100;
+        cy[C_GAS] = bottom - 140;
+        cx[C_BRAKE] = W - right - 280;
+        cy[C_BRAKE] = bottom - 105;
+        cx[C_BOOST] = W - right - 100;
+        cy[C_BOOST] = bottom - 350;
+        if (game.save.leftHanded) {
+            for (int i = 0; i < 5; i++) cx[i] = W - cx[i];
+            // keep left/right arrows in screen order
+            float t = cx[C_LEFT];
+            cx[C_LEFT] = cx[C_RIGHT];
+            cx[C_RIGHT] = t;
+        }
+    }
+
+    /** Nearest control to a point, or -1 if none is within reach. */
+    private int controlAt(float x, float y) {
+        int best = -1;
+        float bd = 150f * 150f;
+        for (int i = 0; i < 5; i++) {
+            float dx = x - cx[i], dy = y - cy[i];
+            float d = dx * dx + dy * dy;
+            if (i == C_BOOST) d *= 1.4f; // boost is a smaller target than the pedals
+            if (d < bd) {
+                bd = d;
+                best = i;
+            }
+        }
+        return best;
+    }
+
+    public void preInput() {
+        layoutControls();
+        if (!controlsActive()) return;
+        Car p = match.player;
+        for (Input.Pointer ptr : game.input.pointers) {
+            if (!ptr.justDown || ptr.owner != 0) continue;
+            if (camMenu && ptr.x > menuX && ptr.y < menuY) continue; // let the camera menu have it
+            int c = controlAt(ptr.x, ptr.y);
+            if (c < 0) continue;
+            ptr.owner = OWNER_CTRL;
+            if (c == C_BOOST && p.boostCd <= 0) {
+                p.wantBoost = true;
+                game.vibrate(15);
+            }
+        }
+    }
+
+    private void handleControls(float dt) {
+        Car p = match.player;
+        for (int i = 0; i < 5; i++) held[i] = false;
+        if (controlsActive()) {
+            for (Input.Pointer ptr : game.input.pointers) {
+                if (ptr.owner != OWNER_CTRL || !ptr.down) continue;
+                int c = controlAt(ptr.x, ptr.y);
+                if (c >= 0) held[c] = true;
+            }
+        }
+        for (int i = 0; i < 5; i++) press[i] = Ease.approach(press[i], held[i] ? 1f : 0f, 25f, dt);
+        if (p == null) return;
+        p.steer = (held[C_RIGHT] ? 1f : 0f) - (held[C_LEFT] ? 1f : 0f);
+        p.throttle = held[C_BRAKE] ? -1f : (held[C_GAS] ? 1f : 0f);
+        if (held[C_GAS] && match.phase != Match.INTRO) usedGas = true;
+    }
+
     // ------------------------------------------------------------------ update
 
     public void update(float dt) {
         if (paused) return;
-        Car p = match.player;
         handleControls(dt);
         if (skipping) {
             if (match.fastForward(900)) skipping = false;
@@ -159,6 +245,7 @@ public final class MatchScreen extends Screen {
             match.update(dt);
         }
         view.update(dt);
+        hintT += dt;
         if (bigText != null) {
             bigT += dt;
             if (bigT > bigDur) bigText = null;
@@ -186,73 +273,7 @@ public final class MatchScreen extends Screen {
             }
         }
 
-        if (match.phase == Match.OVER && overT > 3.2f && !resultsShown) {
-            resultsShown = true;
-            finish(false);
-        }
-        if (p != null && !p.alive && deadT > 1.6f && !spectating && specIndex < 0) {
-            // stay on the elimination panel; spectate on request
-        }
-    }
-
-    private void handleControls(float dt) {
-        Car p = match.player;
-        if (p == null) return;
-        UIBatch b = game.b;
-        float bx = boostX(), by = boostY(), br = 92f;
-        // claim pointers
-        for (Input.Pointer ptr : game.input.pointers) {
-            if (!ptr.justDown || ptr.owner != 0) continue;
-            float dx = ptr.x - bx, dy = ptr.y - by;
-            if (dx * dx + dy * dy < (br + 30) * (br + 30) && p.alive) {
-                ptr.owner = OWNER_BOOST;
-                p.wantBoost = true;
-                boostPress = 1f;
-                game.vibrate(15);
-            } else if (ptr.y > game.safeTop + 230 && stick == null && p.alive && !(spectating || deadT >= 0)) {
-                ptr.owner = OWNER_STICK;
-                stick = ptr;
-                stickX = ptr.x;
-                stickY = ptr.y;
-                knobX = ptr.x;
-                knobY = ptr.y;
-            }
-        }
-        if (stick != null && (!stick.down || stick.owner != OWNER_STICK)) stick = null;
-        if (boostPress > 0) boostPress = Math.max(0f, boostPress - dt * 4f);
-        if (stick != null && p.alive) {
-            float dx = stick.x - stickX, dy = stick.y - stickY;
-            float len = (float) Math.sqrt(dx * dx + dy * dy);
-            float maxR = 95f;
-            if (len > maxR) {
-                // drag the base along so the stick never feels stuck
-                stickX += dx / len * (len - maxR);
-                stickY += dy / len * (len - maxR);
-                dx = stick.x - stickX;
-                dy = stick.y - stickY;
-                len = maxR;
-            }
-            knobX = stickX + dx;
-            knobY = stickY + dy;
-            float mag = Math.min(1f, len / maxR);
-            if (len > 4f) {
-                mag = Math.max(0.35f, mag);
-                p.inX = dx / Math.max(1e-3f, (float) Math.sqrt(dx * dx + dy * dy)) * mag;
-                p.inZ = dy / Math.max(1e-3f, (float) Math.sqrt(dx * dx + dy * dy)) * mag;
-            } else {
-                p.inX = p.inZ = 0;
-            }
-        } else if (p.bot == null) {
-            p.inX = p.inZ = 0;
-        }
-    }
-
-    private float boostX() {
-        return game.save.leftHanded ? 130f : game.b.width - 130f;
-    }
-
-    private float boostY() {
-        return game.b.height - game.safeBottom - 170f;
+        if (match.phase == Match.OVER && overT > 3.2f && !resultsShown) finish(false);
     }
 
     // ------------------------------------------------------------------ camera / 3D
@@ -278,32 +299,89 @@ public final class MatchScreen extends Screen {
     public boolean render3d() {
         Car t = camTarget();
         float dt = 1f / 60f;
-        float tx = 0, tz = 0;
-        if (t != null) {
-            tx = t.x + t.vx * 0.25f;
-            tz = t.z + t.vz * 0.25f;
-            if (t.falling) {
-                tx = t.x;
-                tz = t.z;
+        int mode = game.save.camMode;
+        float fov;
+        float wex, wey, wez, wtx, wty, wtz;
+        view.hoodCar = null;
+        game.cam.near = 0.5f;
+        if (t == null) {
+            wex = 0; wey = 60; wez = 50; wtx = 0; wty = 0; wtz = 0;
+            fov = 55f;
+        } else if (match.phase == Match.OVER && (match.winner != null || match.tie)) {
+            // celebration orbit
+            orbit += dt * 0.5f;
+            wex = t.x + (float) Math.sin(orbit) * 11f;
+            wez = t.z + (float) Math.cos(orbit) * 11f;
+            wey = Math.max(t.y, -30f) + 6f;
+            wtx = t.x;
+            wty = Math.max(t.y, -30f) + 1f;
+            wtz = t.z;
+            fov = 55f;
+        } else {
+            if (!t.falling) {
+                float rate = mode == 2 ? 40f : 4.5f;
+                camYaw = camYaw + Ease.wrapAngle(t.yaw - camYaw) * (1f - (float) Math.exp(-rate * dt));
+            }
+            float fx = (float) Math.sin(camYaw), fz = (float) Math.cos(camYaw);
+            float baseY = t.falling ? Math.max(-30f, t.y * 0.6f) : 0f;
+            if (t.falling) mode = 1;
+            boolean drop = match.phase == Match.DROP && match.phaseT < 1.6f;
+            if (mode == 2) {
+                CarDef d = t.def;
+                wex = t.x + fx * d.hoodZ;
+                wez = t.z + fz * d.hoodZ;
+                wey = t.y + t.hop + d.hoodY;
+                wtx = wex + fx * 12f;
+                wtz = wez + fz * 12f;
+                wty = wey - 2.3f;
+                fov = 70f;
+                game.cam.near = 0.2f;
+                view.hoodCar = t;
+            } else if (mode == 0) {
+                float back = 8.5f + (drop ? 2f : 0f), up = 4.4f + (drop ? 1.5f : 0f);
+                wex = t.x - fx * back;
+                wez = t.z - fz * back;
+                wey = baseY + up;
+                wtx = t.x + fx * 3f;
+                wtz = t.z + fz * 3f;
+                wty = baseY + 1.0f;
+                fov = 62f;
+            } else {
+                float back = 15f + (drop ? 4f : 0f), up = 12f + (drop ? 5f : 0f);
+                wex = t.x - fx * back;
+                wez = t.z - fz * back;
+                wey = baseY + up;
+                wtx = t.x + fx * 4f;
+                wtz = t.z + fz * 4f;
+                wty = baseY;
+                fov = 58f;
+            }
+            if (match.phase == Match.INTRO) {
+                // swoop down from a bird's-eye view
+                float k = Ease.inOutSine(Math.min(1f, match.phaseT / (Match.INTRO_TIME * 0.9f)));
+                wex = Ease.lerp(t.x, wex, k);
+                wey = Ease.lerp(75f, wey, k);
+                wez = Ease.lerp(t.z - 30f, wez, k);
+                wtx = Ease.lerp(t.x, wtx, k);
+                wty = Ease.lerp(0f, wty, k);
+                wtz = Ease.lerp(t.z, wtz, k);
             }
         }
-        float wantH = 30f + (t != null ? Math.min(6f, t.speed() * 0.25f) : 0f);
-        if (match.phase == Match.INTRO) wantH = 30f + (1f - Math.min(1f, match.phaseT / Match.INTRO_TIME)) * 40f;
-        if (match.phase == Match.OVER) wantH = 22f;
-        if (match.phase == Match.DROP && match.phaseT < 1.6f) wantH += 7f;
         if (!camInit) {
-            camX = tx;
-            camZ = tz;
-            camH = 70f;
             camInit = true;
+            if (t != null) camYaw = t.yaw;
+            ex = wex; ey = wey; ez = wez; tx = wtx; ty = wty; tz = wtz;
         }
-        camX = Ease.approach(camX, tx, 5f, dt);
-        camZ = Ease.approach(camZ, tz, 5f, dt);
-        camH = Ease.approach(camH, wantH, 2.5f, dt);
-        float ty = 0f;
-        if (t != null && t.falling) ty = Math.max(-25f, t.y * 0.5f);
-        game.cam.fov = 55f;
-        game.cam.set(camX, camH + ty, camZ + camH * 0.68f, camX, ty, camZ);
+        boolean rigid = view.hoodCar != null || match.phase == Match.INTRO;
+        float k = rigid ? 1f : 1f - (float) Math.exp(-9f * dt);
+        ex += (wex - ex) * k;
+        ey += (wey - ey) * k;
+        ez += (wez - ez) * k;
+        tx += (wtx - tx) * k;
+        ty += (wty - ty) * k;
+        tz += (wtz - tz) * k;
+        game.cam.fov = Ease.approach(game.cam.fov, fov, 10f, dt);
+        game.cam.set(ex, ey, ez, tx, ty, tz);
         game.beginWorld();
         view.draw();
         return true;
@@ -315,55 +393,50 @@ public final class MatchScreen extends Screen {
         UIBatch b = game.b;
         UI ui = game.ui;
         float W = b.width, H = b.height, top = game.safeTop;
+        float left = game.safeLeft + 20, right = game.safeRight + 20;
         Car p = match.player;
 
         drawDanger(b, W, H);
         view.drawPopups(b);
-        drawNameTags(b);
+        if (view.hoodCar == null || view.hoodCar != match.player) drawNameTags(b);
 
         if (!paused) drawBanner(b, W, top);
 
-        // pause button
+        // pause + alive counter (top left)
         if (!paused && match.phase != Match.OVER) {
-            if (ui.roundButton("pause", 62, top + 66, 44, 0xFFFFFFFF)) {
+            if (ui.roundButton("pause", left + 40, top + 52, 38, 0xFFFFFFFF)) {
                 paused = true;
+                camMenu = false;
                 game.input.reset();
             }
-            ui.iconPause(62, top + 66 + ui.lastRoundPress, 44, 0xFF2A1840);
+            ui.iconPause(left + 40, top + 52 + ui.lastRoundPress, 38, 0xFF2A1840);
         }
-
-        // alive counter
-        float acx = W - 24;
         String al = String.valueOf(match.alive);
-        float aw = b.title.width(al, 44f) + 100;
-        b.shadow(acx - aw, top + 32 + 6, aw, 68, 34, 0x50200040, 8);
-        b.shape(acx - aw / 2, top + 66, aw, 68, 34, 0xFF2A1840, 0, 0, 0, 0, 0);
-        drawCarIcon(b, acx - aw + 42, top + 66, 1f);
-        b.text(b.title, al, acx - 24, top + 68, 44f, 0xFFFFFFFF, UIBatch.RIGHT, 0, 0);
-        if (match.duckCollected) {
-            float s = 1f + duckFlash * 0.6f;
-            drawDuckIcon(b, 62, top + 150, s);
-        }
+        float aw = b.title.width(al, 40f) + 96;
+        float ax = left + 100;
+        b.shadow(ax, top + 52 - 30 + 6, aw, 60, 30, 0x50200040, 8);
+        b.shape(ax + aw / 2, top + 52, aw, 60, 30, 0xFF2A1840, 0, 0, 0, 0, 0);
+        drawCarIcon(b, ax + 40, top + 52, 0.95f);
+        b.text(b.title, al, ax + aw - 22, top + 54, 40f, 0xFFFFFFFF, UIBatch.RIGHT, 0, 0);
+        if (match.duckCollected) drawDuckIcon(b, ax + aw + 42, top + 52, 1f + duckFlash * 0.6f);
 
         // controls
-        if (p != null && p.alive && match.phase != Match.OVER && !paused) {
-            if (stick != null) {
-                b.circle(stickX, stickY, 100, 0x30FFFFFF, 0x80FFFFFF, 5);
-                b.circle(knobX, knobY + 6, 52, 0x40200040);
-                b.shape(knobX, knobY, 104, 104, 52, 0xFFFFFFFF, 0xFF2A1840, 0, 0.4f, 0, 0);
-            } else if (match.phase == Match.INTRO || match.round <= 1) {
-                if (match.phase == Match.INTRO && game.save.matches < 3) {
-                    float ty = H * 0.62f;
-                    b.shape(W / 2, ty, W - 80, 150, 40, 0xD02A1840, 0, 0, 0, 0, 0);
-                    b.text(b.title, "GET ON THE COLOR SHOWN UP TOP", W / 2, ty - 28, 34f, 0xFFFFE14D, UIBatch.CENTER, 0, 0);
-                    b.text(b.body, "before the timer runs out. Last car standing wins!", W / 2, ty + 30, 30f, 0xFFFFFFFF, UIBatch.CENTER, 0, 0);
-                }
+        if (controlsActive()) {
+            drawControls(b, p);
+            if (match.phase == Match.INTRO && game.save.matches < 3) {
+                float hy = H * 0.6f;
+                b.shape(W / 2, hy, Math.min(900f, W - 60), 140, 40, 0xD02A1840, 0, 0, 0, 0, 0);
+                b.text(b.title, "GET ON THE COLOR SHOWN UP TOP", W / 2, hy - 26, 38f, 0xFFFFE14D, UIBatch.CENTER, 0, 0);
+                b.text(b.body, "before the timer runs out. Last car standing wins!", W / 2, hy + 30, 30f, 0xFFFFFFFF, UIBatch.CENTER, 0, 0);
+            } else if (match.round <= 1 && !usedGas) {
                 b.alpha(0.6f + (float) Math.sin(game.time * 4f) * 0.3f);
-                b.text(b.body, "DRAG ANYWHERE TO DRIVE", W / 2, H - game.safeBottom - 60, 32f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 4f);
+                b.text(b.body, "ARROWS TO STEER  -  HOLD GAS TO GO", W / 2, top + 178, 28f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 4f);
                 b.alpha(1f);
             }
-            drawBoost(b, p);
         }
+
+        // camera button + menu (top right), drawn over the controls
+        if (!paused) drawCameraButton(b, ui, W, top, right);
 
         // big announcement
         if (bigText != null) {
@@ -371,28 +444,99 @@ public final class MatchScreen extends Screen {
             float sc = Ease.outElastic(Math.min(1f, bigT * 2.2f));
             float fade = k > 0.75f ? 1f - (k - 0.75f) / 0.25f : 1f;
             b.alpha(fade);
-            float size = (bigText.length() <= 3 ? 190f : 110f) * sc;
+            float size = (bigText.length() <= 3 ? 170f : 104f) * sc;
             b.textShadow(b.title, bigText, W / 2, H * 0.40f, size, bigColor, UIBatch.CENTER, 0xFF2A1840, size * 0.08f, 12f, 0x70200040);
             b.alpha(1f);
         }
         if (subT > 0 && bigText == null) {
             float sc = Ease.outBack(Math.min(1f, (2.2f - subT) * 4f));
             b.alpha(Math.min(1f, subT * 2f));
-            b.textShadow(b.title, subText, W / 2, H * 0.40f, 90f * sc, 0xFFFFE14D, UIBatch.CENTER, 0xFF2A1840, 8f, 10f, 0x70200040);
+            b.textShadow(b.title, subText, W / 2, H * 0.40f, 86f * sc, 0xFFFFE14D, UIBatch.CENTER, 0xFF2A1840, 8f, 10f, 0x70200040);
             b.alpha(1f);
         }
 
-        // eliminated panel
         if (p != null && !p.alive && match.phase != Match.OVER && deadT > 1.5f && !paused) drawEliminated(b, ui, W, H);
-        else if (p != null && !p.alive && match.phase == Match.OVER && !resultsShown && !paused) {
-            // wait for results
-        }
         if (skipping) {
             b.rect(0, 0, W, H, 0x80200040);
             b.textShadow(b.title, "FAST FORWARD...", W / 2, H / 2, 70f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 7f, 8f, 0x70200040);
         }
-
         if (paused) drawPause(b, ui, W, H);
+    }
+
+    private void drawCameraButton(UIBatch b, UI ui, float W, float top, float right) {
+        float bx = W - right - 40, by = top + 52;
+        if (ui.roundButton("cam", bx, by, 38, camMenu ? 0xFFFFE14D : 0xFFFFFFFF)) camMenu = !camMenu;
+        drawCameraIcon(b, bx, by + ui.lastRoundPress, 1f);
+        b.text(b.body, CAM_NAME[game.save.camMode], bx - 52, by + 2, 26f, 0xFFFFFFFF, UIBatch.RIGHT, 0xFF2A1840, 4f);
+        if (!camMenu) return;
+        float pw = 220, ph = 3 * 76 + 24;
+        float px = W - right - pw, py = by + 50;
+        menuX = px - 10;
+        menuY = py + ph + 10;
+        ui.block(px, py, pw, ph);
+        ui.panel(px, py, pw, ph, 0xFFFFFFFF);
+        for (int i = 0; i < 3; i++) {
+            boolean on = game.save.camMode == i;
+            if (ui.button("cam" + i, px + 14, py + 12 + i * 76, pw - 28, 66, on ? 0xFF8E62FF : 0xFF3BA8FF, CAM_NAME[i], 34f)) {
+                game.save.camMode = i;
+                game.save.markDirty();
+                game.save.flush();
+                camMenu = false;
+                camInit = false; // snap to the new view
+            }
+        }
+    }
+
+    static void drawCameraIcon(UIBatch b, float x, float y, float s) {
+        b.roundRect(x - 22 * s, y - 13 * s, 44 * s, 30 * s, 7 * s, 0xFF2A1840);
+        b.roundRect(x - 10 * s, y - 20 * s, 20 * s, 10 * s, 3 * s, 0xFF2A1840);
+        b.circle(x, y + 2 * s, 10 * s, 0xFFFFFFFF);
+        b.circle(x, y + 2 * s, 6 * s, 0xFF2A1840);
+    }
+
+    private void drawControls(UIBatch b, Car p) {
+        // steering arrows
+        for (int i = C_LEFT; i <= C_RIGHT; i++) {
+            float x = cx[i], y = cy[i], s = 150f;
+            float pr = press[i] * 9f;
+            b.shadow(x - s / 2, y - s / 2 + 12, s, s, 40, 0x50200040, 10);
+            b.shape(x, y + 10, s, s, 40, 0xC0303050, 0, 0, 0, 0, 0);
+            b.shape(x, y + pr, s, s, 40, held[i] ? 0xFFFFE14D : 0xE0FFFFFF, 0xFF2A1840, 5f, 0.35f, 0, 0);
+            float d = i == C_LEFT ? -1f : 1f;
+            float ax = x + d * 10, ay = y + pr;
+            b.line(ax + d * 22, ay, ax - d * 18, ay - 34, 22, 0xFF2A1840);
+            b.line(ax + d * 22, ay, ax - d * 18, ay + 34, 22, 0xFF2A1840);
+        }
+        // pedals
+        drawPedal(b, C_BRAKE, 140, 150, 0xFFFF4F6A, "BRAKE", 30f);
+        drawPedal(b, C_GAS, 150, 220, 0xFF34D058, "GAS", 46f);
+        // boost
+        float x = cx[C_BOOST], y = cy[C_BOOST], r = 68f;
+        boolean ok = p.boostCd <= 0;
+        float ready = ok ? 1f : 1f - p.boostCd / p.boostCooldown;
+        float pr = press[C_BOOST] * 8f;
+        float rr = r * (ok ? 1f + (float) Math.sin(game.time * 6f) * 0.04f : 1f);
+        b.shadow(x - rr, y - rr + 12, rr * 2, rr * 2, rr, 0x50200040, 10);
+        b.circle(x, y + 10, rr, ok ? 0xFFC0306A : 0xFF6A6080);
+        b.shape(x, y + pr, rr * 2, rr * 2, rr, ok ? 0xFFFF4FA3 : 0xFF9A90B0, 0xFFFFFFFF, 6f, 0.5f, 0, 0);
+        if (!ok) {
+            float fh = rr * 2 * ready;
+            b.clip(x - rr, y + rr - fh + pr, rr * 2, fh);
+            b.shape(x, y + pr, rr * 2 - 12, rr * 2 - 12, rr - 6, 0xFFFF7CC0, 0, 0, 0, 0, 0);
+            b.unclip();
+        }
+        b.text(b.title, "BOOST", x, y + pr + 3, 32f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 4f);
+    }
+
+    private void drawPedal(UIBatch b, int c, float w, float h, int color, String label, float size) {
+        float x = cx[c], y = cy[c];
+        float pr = press[c] * 10f;
+        b.shadow(x - w / 2, y - h / 2 + 12, w, h, 34, 0x50200040, 10);
+        b.shape(x, y + 10, w, h, 34, UI.shade(color, 0.62f), 0, 0, 0, 0, 0);
+        b.shape(x, y + pr, w, h, 34, held[c] ? UI.shade(color, 1.25f) : color, 0xFFFFFFFF, 5f, 0.45f, 0, 0);
+        // grip ridges
+        for (int i = -1; i <= 1; i++) b.roundRect(x - w * 0.3f, y + pr + h * 0.18f + i * 18 + 10, w * 0.6f, 7, 3.5f, 0x40FFFFFF);
+        b.textFit(b.title, label, x, y + pr - h * 0.2f, size, w - 20, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 4f);
     }
 
     /** Red pulsing edges when the timer is running out and you're on the wrong color. */
@@ -411,9 +555,9 @@ public final class MatchScreen extends Screen {
     }
 
     private void drawBanner(UIBatch b, float W, float top) {
-        float cy = top + 66;
-        float bw = 360, bh = 92;
-        float pop = 1f + Ease.outElastic(1f - bannerPop) * 0f + bannerPop * 0.25f;
+        float cy0 = top + 52;
+        float bw = 340, bh = 84;
+        float pop = 1f + bannerPop * 0.25f;
         String label;
         int fill;
         int sym = -1;
@@ -429,64 +573,42 @@ public final class MatchScreen extends Screen {
             sym = match.target;
         }
         float w = bw * pop, h = bh * pop;
-        b.shadow(W / 2 - w / 2, cy - h / 2 + 10, w, h, h / 2, 0x60200040, 12);
-        b.shape(W / 2, cy + 7, w, h, h / 2, UI.shade(fill, 0.7f), 0, 0, 0, 0, 0);
-        b.shape(W / 2, cy, w, h, h / 2, fill, 0xFFFFFFFF, 6f, 0.5f, 0, 0);
+        b.shadow(W / 2 - w / 2, cy0 - h / 2 + 10, w, h, h / 2, 0x60200040, 12);
+        b.shape(W / 2, cy0 + 7, w, h, h / 2, UI.shade(fill, 0.7f), 0, 0, 0, 0, 0);
+        b.shape(W / 2, cy0, w, h, h / 2, fill, 0xFFFFFFFF, 6f, 0.5f, 0, 0);
         int textCol = fill == 0xFFFFFFFF || fill == 0xFFFFE14D ? 0xFF2A1840 : 0xFFFFFFFF;
         int outline = textCol == 0xFFFFFFFF ? 0xFF2A1840 : 0;
         if (sym >= 0) {
-            drawSymbol(b, W / 2 - w / 2 + 52, cy, 28 * pop, sym, 0xFFFFFFFF);
-            b.textFit(b.title, label, W / 2 + 22, cy + 2, 60f * pop, w - 130, textCol, UIBatch.CENTER, outline, 6f);
+            drawSymbol(b, W / 2 - w / 2 + 50, cy0, 26 * pop, sym, 0xFFFFFFFF);
+            b.textFit(b.title, label, W / 2 + 22, cy0 + 2, 56f * pop, w - 130, textCol, UIBatch.CENTER, outline, 6f);
         } else {
-            b.textFit(b.title, label, W / 2, cy + 2, 56f * pop, w - 50, textCol, UIBatch.CENTER, outline, 6f);
+            b.textFit(b.title, label, W / 2, cy0 + 2, 52f * pop, w - 50, textCol, UIBatch.CENTER, outline, 6f);
         }
 
-        // timer bar
         if (match.phase == Match.SHOW || match.phase == Match.DROP) {
             float k = match.phase == Match.SHOW ? match.timer / Math.max(0.01f, match.timerMax) : 0f;
-            float tw = 420, th = 30, ty = cy + h / 2 + 34;
-            b.shape(W / 2, ty + 4, tw, th, th / 2, 0x50200040, 0, 0, 0, 0, 0);
-            b.shape(W / 2, ty, tw, th, th / 2, 0xFF2A1840, 0, 0, 0, 0, 0);
+            float tw = 400, th = 28, ty0 = cy0 + h / 2 + 28;
+            b.shape(W / 2, ty0 + 4, tw, th, th / 2, 0x50200040, 0, 0, 0, 0, 0);
+            b.shape(W / 2, ty0, tw, th, th / 2, 0xFF2A1840, 0, 0, 0, 0, 0);
             float fw = (tw - 10) * k;
             int bar = k > 0.5f ? 0xFF5EE65A : (k > 0.25f ? 0xFFFFC21F : 0xFFFF3B5C);
             if (fw > 4) {
                 float wob = match.timer < 1f ? (float) Math.sin(game.time * 40f) * 2f : 0f;
-                b.shape(W / 2 - (tw - 10) / 2 + fw / 2, ty + wob, fw, th - 10, (th - 10) / 2, bar, 0, 0, 0.6f, 0, 0);
+                b.shape(W / 2 - (tw - 10) / 2 + fw / 2, ty0 + wob, fw, th - 10, (th - 10) / 2, bar, 0, 0, 0.6f, 0, 0);
             }
             String secs = match.phase == Match.SHOW ? String.format(java.util.Locale.US, "%.1f", Math.max(0f, match.timer)) : "0.0";
-            b.text(b.title, secs, W / 2 + tw / 2 + 16, ty + 2, 40f, 0xFFFFFFFF, UIBatch.LEFT, 0xFF2A1840, 5f);
-            b.text(b.body, "ROUND " + match.round, W / 2 - tw / 2 - 16, ty + 2, 30f, 0xFFFFFFFF, UIBatch.RIGHT, 0xFF2A1840, 4f);
+            b.text(b.title, secs, W / 2 + tw / 2 + 16, ty0 + 2, 38f, 0xFFFFFFFF, UIBatch.LEFT, 0xFF2A1840, 5f);
+            b.text(b.body, "ROUND " + match.round, W / 2 - tw / 2 - 16, ty0 + 2, 28f, 0xFFFFFFFF, UIBatch.RIGHT, 0xFF2A1840, 4f);
         }
-    }
-
-    private void drawBoost(UIBatch b, Car p) {
-        float x = boostX(), y = boostY(), r = 92f;
-        float ready = p.boostCd <= 0 ? 1f : 1f - p.boostCd / p.boostCooldown;
-        boolean ok = p.boostCd <= 0;
-        float press = boostPress * 10f;
-        float pulse = ok ? 1f + (float) Math.sin(game.time * 6f) * 0.04f : 1f;
-        float rr = r * pulse;
-        b.shadow(x - rr, y - rr + 14, rr * 2, rr * 2, rr, 0x50200040, 10);
-        b.circle(x, y + 12, rr, ok ? 0xFFC0306A : 0xFF6A6080);
-        b.shape(x, y + press, rr * 2, rr * 2, rr, ok ? 0xFFFF4FA3 : 0xFF9A90B0, 0xFFFFFFFF, 7f, 0.5f, 0, 0);
-        if (!ok) {
-            // fill from the bottom as it recharges
-            float fh = rr * 2 * ready;
-            b.clip(x - rr, y + rr - fh + press, rr * 2, fh);
-            b.shape(x, y + press, rr * 2 - 14, rr * 2 - 14, rr - 7, 0xFFFF7CC0, 0, 0, 0, 0, 0);
-            b.unclip();
-        }
-        b.text(b.title, "BOOST", x, y + press + 4, 40f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 5f);
     }
 
     private void drawNameTags(UIBatch b) {
-        // names for cars near the camera target
         Car t = camTarget();
         if (t == null || match.phase == Match.INTRO) return;
         float[] pr = proj2;
         for (int k = 0; k < 3; k++) {
             Car best = null;
-            float bd = 90f;
+            float bd = 120f;
             for (Car c : match.cars) {
                 if (!c.alive || c == match.player || c == tagged[0] || c == tagged[1]) continue;
                 float dx = c.x - t.x, dz = c.z - t.z;
@@ -511,30 +633,25 @@ public final class MatchScreen extends Screen {
     private void drawEliminated(UIBatch b, UI ui, float W, float H) {
         Car p = match.player;
         float k = Ease.outBack(Math.min(1f, (deadT - 1.5f) * 3f));
-        float pw = 600, ph = spectating ? 0 : 430;
         if (!spectating) {
-            float px = W / 2 - pw / 2, py = H * 0.5f - ph / 2 + (1 - k) * 300;
+            float pw = 640, ph = 380;
+            float px = W / 2 - pw / 2, py = H * 0.5f - ph / 2 + 30 + (1 - k) * 300;
             b.alpha(Math.min(1f, (deadT - 1.5f) * 3f));
             ui.panel(px, py, pw, ph, 0xFFFFFFFF);
-            b.text(b.title, "ELIMINATED!", W / 2, py + 70, 66f, 0xFFFF4FA3, UIBatch.CENTER, 0xFF2A1840, 6f);
-            b.text(b.title, "#" + p.place, W / 2, py + 165, 110f, 0xFF2A1840, UIBatch.CENTER, 0, 0);
-            b.text(b.body, "of " + match.total + "  -  survived " + p.roundsSurvived + " rounds", W / 2, py + 240, 30f, 0xFF7A6A90, UIBatch.CENTER, 0, 0);
+            b.text(b.title, "ELIMINATED!", W / 2, py + 62, 62f, 0xFFFF4FA3, UIBatch.CENTER, 0xFF2A1840, 6f);
+            b.text(b.title, "#" + p.place, W / 2, py + 148, 100f, 0xFF2A1840, UIBatch.CENTER, 0, 0);
+            b.text(b.body, "of " + match.total + "  -  survived " + p.roundsSurvived + " rounds", W / 2, py + 218, 30f, 0xFF7A6A90, UIBatch.CENTER, 0, 0);
             b.alpha(1f);
-            if (ui.button("spectate", px + 30, py + 290, 260, 110, 0xFF3BA8FF, "WATCH", 48f)) {
-                spectating = true;
-            }
-            if (ui.button("continue", px + 310, py + 290, 260, 110, 0xFF34D058, "NEXT", 48f)) {
-                finish(true);
-            }
+            if (ui.button("spectate", px + 30, py + 255, 280, 100, 0xFF3BA8FF, "WATCH", 46f)) spectating = true;
+            if (ui.button("continue", px + 330, py + 255, 280, 100, 0xFF34D058, "NEXT", 46f)) finish(true);
         } else {
-            // spectator bar
             Car t = camTarget();
-            float y = H - game.safeBottom - 120;
-            b.shadow(30, y - 50 + 8, W - 60, 100, 50, 0x50200040, 10);
-            b.shape(W / 2, y, W - 60, 100, 50, 0xFF2A1840, 0, 0, 0, 0, 0);
-            b.textFit(b.body, "WATCHING " + (t == null ? "" : t.name.toUpperCase()), W / 2 - 60, y + 2, 32f, 300, 0xFFFFFFFF, UIBatch.CENTER, 0, 0);
-            if (ui.button("nextcar", W - 300, y - 40, 120, 80, 0xFF8E62FF, ">", 50f)) nextSpectate();
-            if (ui.button("skip", W - 170, y - 40, 120, 80, 0xFFFF9A2B, "SKIP", 34f)) skipping = true;
+            float bw = 780, y = H - game.safeBottom - 70;
+            b.shadow(W / 2 - bw / 2, y - 45 + 8, bw, 90, 45, 0x50200040, 10);
+            b.shape(W / 2, y, bw, 90, 45, 0xFF2A1840, 0, 0, 0, 0, 0);
+            b.textFit(b.body, "WATCHING " + (t == null ? "" : t.name.toUpperCase()), W / 2 - 120, y + 2, 32f, 460, 0xFFFFFFFF, UIBatch.CENTER, 0, 0);
+            if (ui.button("nextcar", W / 2 + bw / 2 - 270, y - 36, 120, 72, 0xFF8E62FF, ">", 46f)) nextSpectate();
+            if (ui.button("skip", W / 2 + bw / 2 - 140, y - 36, 120, 72, 0xFFFF9A2B, "SKIP", 32f)) skipping = true;
         }
     }
 
@@ -553,30 +670,31 @@ public final class MatchScreen extends Screen {
         b.rect(0, 0, W, H, 0x90200040);
         ui.block(0, 0, W, H);
         boolean dev = game.save.dev;
-        float pw = 560, ph = dev ? 760 : 520;
+        float pw = 760, ph = dev ? 470 : 330;
         float px = W / 2 - pw / 2, py = H / 2 - ph / 2;
         ui.panel(px, py, pw, ph, 0xFFFFFFFF);
-        b.text(b.title, "PAUSED", W / 2, py + 75, 80f, 0xFF8E62FF, UIBatch.CENTER, 0xFF2A1840, 6f);
-        if (ui.button("resume", px + 60, py + 160, pw - 120, 130, 0xFF34D058, "RESUME", 60f)) paused = false;
-        if (ui.button("quit", px + 60, py + 320, pw - 120, 120, 0xFFFF4FA3, "GIVE UP", 52f)) {
+        b.text(b.title, "PAUSED", W / 2, py + 64, 72f, 0xFF8E62FF, UIBatch.CENTER, 0xFF2A1840, 6f);
+        if (ui.button("resume", px + 40, py + 130, 330, 120, 0xFF34D058, "RESUME", 56f)) paused = false;
+        if (ui.button("quit", px + 390, py + 130, 330, 120, 0xFFFF4FA3, "GIVE UP", 50f)) {
             paused = false;
             finish(true);
         }
         if (dev) {
-            float y = py + 480;
-            if (ui.button("cw", px + 40, y, 230, 100, 0xFFFFC21F, "WIN NOW", 36f)) {
+            float y = py + 290, bw = 160, gap = (pw - 80 - 4 * bw) / 3f;
+            if (ui.button("cw", px + 40, y, bw, 100, 0xFFFFC21F, "WIN NOW", 30f)) {
                 paused = false;
                 Cheats.instantWin(match);
             }
-            if (ui.button("cd", px + 290, y, 230, 100, 0xFFFFC21F, "DUCK HERE", 36f)) {
+            if (ui.button("cd", px + 40 + (bw + gap), y, bw, 100, 0xFFFFC21F, "DUCK HERE", 28f)) {
                 paused = false;
                 Cheats.duckHere(match);
             }
-            if (ui.button("cs", px + 40, y + 120, 230, 100, 0xFFFFC21F, "SKIP RND", 36f)) {
+            if (ui.button("cs", px + 40 + 2 * (bw + gap), y, bw, 100, 0xFFFFC21F, "SKIP RND", 30f)) {
                 paused = false;
                 match.timer = 0.01f;
             }
-            if (ui.button("cg", px + 290, y + 120, 230, 100, match.player != null && match.player.god ? 0xFF34D058 : 0xFFFFC21F, "GOD", 36f)) {
+            boolean god = match.player != null && match.player.god;
+            if (ui.button("cg", px + 40 + 3 * (bw + gap), y, bw, 100, god ? 0xFF34D058 : 0xFFFFC21F, "GOD", 30f)) {
                 if (match.player != null) match.player.god = !match.player.god;
             }
         }
@@ -599,10 +717,11 @@ public final class MatchScreen extends Screen {
 
     public boolean back() {
         if (match.phase == Match.OVER) {
-            if (!resultsShown) {
-                resultsShown = true;
-                finish(false);
-            }
+            finish(false);
+            return true;
+        }
+        if (camMenu) {
+            camMenu = false;
             return true;
         }
         paused = !paused;

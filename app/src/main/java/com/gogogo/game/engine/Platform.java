@@ -35,6 +35,10 @@ public interface Platform {
 
     int safeInsetBottom();
 
+    int safeInsetLeft();
+
+    int safeInsetRight();
+
     /** Leave the app (Android back on the title screen). */
     void exit();
 

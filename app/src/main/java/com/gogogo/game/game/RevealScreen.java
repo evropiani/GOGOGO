@@ -18,7 +18,8 @@ public final class RevealScreen extends Screen {
         room.show(d.id, d.defPaint, d.defAccent, 11, 4, true);
         room.pedestalColor = 0xFFD23F;
         room.pedestalAccent = 0xFF4FA3;
-        room.screenY = 0.47f;
+        room.screenY = 0.56f;
+        room.screenX = 0.5f;
         room.distance = 15f;
         room.spinSpeed = 1.2f;
     }
@@ -50,18 +51,18 @@ public final class RevealScreen extends Screen {
     public void ui(float dt) {
         UIBatch b = game.b;
         float W = b.width, H = b.height, top = game.safeTop;
+        float right = game.safeRight + 20, bottom = H - game.safeBottom;
         // light rays
         for (int i = 0; i < 12; i++) {
             float a = (float) (i * Math.PI / 6 + t * 0.3f);
-            b.shape(W / 2 + (float) Math.cos(a) * 380, H * 0.45f + (float) Math.sin(a) * 380, 760, 70, 35, 0x18FFFFFF, 0, 0, 0, 20, a);
+            b.shape(W / 2 + (float) Math.cos(a) * 420, H * 0.55f + (float) Math.sin(a) * 420, 840, 70, 35, 0x18FFFFFF, 0, 0, 0, 20, a);
         }
         float k = Ease.outElastic(Math.min(1f, Math.max(0f, t - 0.5f) * 1.2f));
-        b.textShadow(b.title, "SECRET", W / 2, top + 150, 120f * k, 0xFFFFE14D, UIBatch.CENTER, 0xFF2A1840, 11f, 12f, 0x70200040);
-        b.textShadow(b.title, "UNLOCKED!", W / 2, top + 280, 100f * k, 0xFFFF4FA3, UIBatch.CENTER, 0xFF2A1840, 10f, 12f, 0x70200040);
+        b.textShadow(b.title, "SECRET UNLOCKED!", W / 2, top + 80, 96f * k, 0xFFFFE14D, UIBatch.CENTER, 0xFF2A1840, 10f, 11f, 0x70200040);
         float k2 = Ease.outBack(Math.min(1f, Math.max(0f, t - 1.4f) * 2f));
-        b.textShadow(b.title, Cars.ALL[Cars.SECRET].name, W / 2, H - game.safeBottom - 420, 84f * k2, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 8f, 10f, 0x70200040);
-        b.text(b.body, "You found it. Quack responsibly.", W / 2, H - game.safeBottom - 340, 34f * k2, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 4f);
-        if (t > 2f && game.ui.button("awesome", W / 2 - 250, H - game.safeBottom - 250, 500, 130, 0xFF34D058, "QUACK!", 70f)) {
+        b.textShadow(b.title, Cars.ALL[Cars.SECRET].name, W / 2, bottom - 110, 78f * k2, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 8f, 10f, 0x70200040);
+        b.text(b.body, "You found it. Quack responsibly.", W / 2, bottom - 48, 32f * k2, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 4f);
+        if (t > 2f && game.ui.button("awesome", W - right - 330, bottom - 150, 330, 120, 0xFF34D058, "QUACK!", 64f)) {
             game.setScreen(next);
         }
     }

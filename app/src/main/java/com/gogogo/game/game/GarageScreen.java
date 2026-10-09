@@ -73,7 +73,9 @@ public final class GarageScreen extends Screen {
     }
 
     public boolean render3d() {
-        room.screenY = 0.235f;
+        room.screenX = 0.23f;
+        room.screenY = 0.47f;
+        room.distance = 15f;
         room.render();
         return true;
     }
@@ -82,42 +84,48 @@ public final class GarageScreen extends Screen {
         UIBatch b = game.b;
         UI ui = game.ui;
         float W = b.width, H = b.height, top = game.safeTop;
+        float left = game.safeLeft + 20, right = game.safeRight + 20, bottom = H - game.safeBottom;
 
-        if (ui.roundButton("back", 62, top + 66, 44, 0xFFFFFFFF)) game.setScreen(new TitleScreen(game));
-        ui.iconBack(62, top + 66 + ui.lastRoundPress, 44, 0xFF2A1840);
-        b.textShadow(b.title, "GARAGE", W / 2 - 40, top + 68, 60f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 6f, 6f, 0x50200040);
-        TitleScreen.coinPill(game, W - 24, top + 66);
+        if (ui.roundButton("back", left + 40, top + 52, 38, 0xFFFFFFFF)) game.setScreen(new TitleScreen(game));
+        ui.iconBack(left + 40, top + 52 + ui.lastRoundPress, 38, 0xFF2A1840);
+        b.textShadow(b.title, "GARAGE", left + 100, top + 56, 56f, 0xFFFFFFFF, UIBatch.LEFT, 0xFF2A1840, 6f, 6f, 0x50200040);
+        TitleScreen.coinPill(game, W - right, top + 52);
 
-        // car selector
+        // car selector under the showroom (left half)
+        float lw = W * 0.46f;
+        float lcx = left + (lw - left) / 2f;
         CarDef d = Cars.ALL[carIdx];
-        float ny = top + 610;
+        float ny = bottom - 80;
         boolean hidden = secretHidden(carIdx);
         String name = hidden ? "???" : d.name;
-        b.shadow(110, ny - 50 + 8, W - 220, 100, 50, 0x50200040, 10);
-        b.shape(W / 2, ny, W - 220, 100, 50, 0xFF2A1840, 0, 0, 0, 0, 0);
-        b.textFit(b.title, name, W / 2, ny - 6, 50f, W - 300, 0xFFFFFFFF, UIBatch.CENTER, 0, 0);
+        float nw = Math.min(520f, lw - left - 170);
+        b.shadow(lcx - nw / 2, ny - 46 + 8, nw, 92, 46, 0x50200040, 10);
+        b.shape(lcx, ny, nw, 92, 46, 0xFF2A1840, 0, 0, 0, 0, 0);
+        b.textFit(b.title, name, lcx, ny - 8, 46f, nw - 50, 0xFFFFFFFF, UIBatch.CENTER, 0, 0);
         String sub = s().carOwned[carIdx] ? (s().selectedCar == carIdx ? "DRIVING THIS ONE" : "OWNED") : (hidden ? "SECRET" : d.price + " COINS");
-        b.text(b.body, sub, W / 2, ny + 32, 24f, s().carOwned[carIdx] ? 0xFF5EE65A : 0xFFFFE14D, UIBatch.CENTER, 0, 0);
-        if (ui.roundButton("prev", 62, ny, 46, 0xFFFFE14D)) {
+        b.text(b.body, sub, lcx, ny + 28, 22f, s().carOwned[carIdx] ? 0xFF5EE65A : 0xFFFFE14D, UIBatch.CENTER, 0, 0);
+        float ax = nw / 2 + 50;
+        if (ui.roundButton("prev", lcx - ax, ny, 42, 0xFFFFE14D)) {
             carIdx = (carIdx + Cars.ALL.length - 1) % Cars.ALL.length;
             refreshCar(true);
             game.sfx.play(Sfx.WHOOSH, 0.6f, 1.2f);
         }
-        ui.iconBack(62, ny + ui.lastRoundPress, 46, 0xFF2A1840);
-        if (ui.roundButton("next", W - 62, ny, 46, 0xFFFFE14D)) {
+        ui.iconBack(lcx - ax, ny + ui.lastRoundPress, 42, 0xFF2A1840);
+        if (ui.roundButton("next", lcx + ax, ny, 42, 0xFFFFE14D)) {
             carIdx = (carIdx + 1) % Cars.ALL.length;
             refreshCar(true);
             game.sfx.play(Sfx.WHOOSH, 0.6f, 1.2f);
         }
-        ui.iconPlay(W - 58, ny + ui.lastRoundPress, 46, 0xFF2A1840);
+        ui.iconPlay(lcx + ax + 4, ny + ui.lastRoundPress, 42, 0xFF2A1840);
 
-        // tabs
-        float ty = ny + 75;
-        float tw = (W - 60) / 4f;
+        // tabs + content (right half)
+        float px = lw + 10, pw = W - right - px;
+        float ty = top + 100;
+        float tw = pw / 4f;
         for (int i = 0; i < 4; i++) {
-            float x = 30 + i * tw;
+            float x = px + i * tw;
             boolean on = tab == i;
-            if (ui.hit("tab" + i, x, ty, tw - 8, 76)) {
+            if (ui.hit("tab" + i, x, ty, tw - 8, 70)) {
                 if (tab != i) {
                     tab = i;
                     pendingKind = -1;
@@ -126,35 +134,33 @@ public final class GarageScreen extends Screen {
                 }
             }
             int col = on ? TAB_COLORS[i] : 0xFFFFFFFF;
-            b.shape(x + (tw - 8) / 2, ty + 38 + (on ? 0 : 6), tw - 8, 76 - (on ? 0 : 6), 22, col, 0xFF2A1840, on ? 0 : 0, 0.3f, 0, 0);
-            b.textFit(b.title, TABS[i], x + (tw - 8) / 2, ty + 40 + (on ? 0 : 3), 34f, tw - 24, on ? 0xFFFFFFFF : 0xFF8A7AA0, UIBatch.CENTER, on ? 0xFF2A1840 : 0, on ? 4f : 0);
+            b.shape(x + (tw - 8) / 2, ty + 35 + (on ? 0 : 5), tw - 8, 70 - (on ? 0 : 5), 22, col, 0, 0, 0.3f, 0, 0);
+            b.textFit(b.title, TABS[i], x + (tw - 8) / 2, ty + 37 + (on ? 0 : 3), 32f, tw - 24, on ? 0xFFFFFFFF : 0xFF8A7AA0, UIBatch.CENTER, on ? 0xFF2A1840 : 0, on ? 4f : 0);
         }
-
-        // content panel
-        float cy = ty + 90, ch = H - game.safeBottom - 24 - cy;
-        b.shadow(24, cy + 8, W - 48, ch, 30, 0x40200040, 14);
-        b.shape(W / 2, cy + ch / 2, W - 48, ch, 30, 0xFFFFFFFF, TAB_COLORS[tab], 6f, 0f, 0, 0);
+        float cy = ty + 84, ch = bottom - 20 - cy;
+        b.shadow(px, cy + 8, pw, ch, 30, 0x40200040, 14);
+        b.shape(px + pw / 2, cy + ch / 2, pw, ch, 30, 0xFFFFFFFF, TAB_COLORS[tab], 6f, 0f, 0, 0);
         switch (tab) {
-            case 0: tabCar(b, ui, cy, ch, W); break;
-            case 1: tabUpgrade(b, ui, cy, ch, W); break;
-            case 2: tabPaint(b, ui, cy, ch, W); break;
-            default: tabStyle(b, ui, cy, ch, W); break;
+            case 0: tabCar(b, ui, px, pw, cy, ch); break;
+            case 1: tabUpgrade(b, ui, px, pw, cy, ch); break;
+            case 2: tabPaint(b, ui, px, pw, cy, ch); break;
+            default: tabStyle(b, ui, px, pw, cy, ch); break;
         }
 
         if (toastT > 0) {
             float k = Ease.outBack(Math.min(1f, (1.6f - toastT) * 5f));
             b.alpha(Math.min(1f, toastT * 3f));
-            b.textShadow(b.title, toast, W / 2, top + 480, 64f * k, toastColor, UIBatch.CENTER, 0xFF2A1840, 7f, 8f, 0x60200040);
+            b.textShadow(b.title, toast, lcx, H * 0.3f, 60f * k, toastColor, UIBatch.CENTER, 0xFF2A1840, 7f, 8f, 0x60200040);
             b.alpha(1f);
         }
     }
 
-    // ------------------------------------------------------------------ tabs
+    // ------------------------------------------------------------------ tabs (px/pw = panel left/width)
 
     private void statBars(UIBatch b, float x, float y, float w, int car, boolean showUpg) {
         CarDef d = Cars.ALL[car];
         for (int i = 0; i < 4; i++) {
-            float ry = y + i * 52;
+            float ry = y + i * 50;
             b.text(b.body, CarDef.STAT_NAME[i], x, ry, 28f, 0xFF2A1840, UIBatch.LEFT, 0, 0);
             float bx = x + 150, bw = w - 150;
             b.roundRect(bx, ry - 14, bw, 28, 14, 0xFFEDE6F6);
@@ -165,24 +171,25 @@ public final class GarageScreen extends Screen {
         }
     }
 
-    private void tabCar(UIBatch b, UI ui, float cy, float ch, float W) {
+    private void tabCar(UIBatch b, UI ui, float px, float pw, float cy, float ch) {
         Save s = s();
         CarDef d = Cars.ALL[carIdx];
-        boolean hidden = secretHidden(carIdx);
-        if (hidden) {
-            ui.iconLock(W / 2, cy + 110, 90, 0xFF2A1840);
-            b.text(b.title, "TOP SECRET", W / 2, cy + 210, 54f, 0xFF8E62FF, UIBatch.CENTER, 0, 0);
-            b.text(b.body, "Nobody knows how to get this one.", W / 2, cy + 270, 30f, 0xFF7A6A90, UIBatch.CENTER, 0, 0);
-            b.text(b.body, "Some say you have to be a real champion...", W / 2, cy + 310, 26f, 0xFFA898C0, UIBatch.CENTER, 0, 0);
+        float cx = px + pw / 2;
+        if (secretHidden(carIdx)) {
+            ui.iconLock(cx, cy + 100, 84, 0xFF2A1840);
+            b.text(b.title, "TOP SECRET", cx, cy + 195, 52f, 0xFF8E62FF, UIBatch.CENTER, 0, 0);
+            b.text(b.body, "Nobody knows how to get this one.", cx, cy + 255, 30f, 0xFF7A6A90, UIBatch.CENTER, 0, 0);
+            b.text(b.body, "Some say you have to be a real champion...", cx, cy + 295, 26f, 0xFFA898C0, UIBatch.CENTER, 0, 0);
             return;
         }
-        b.text(b.body, d.blurb, W / 2, cy + 50, 30f, 0xFF7A6A90, UIBatch.CENTER, 0, 0);
-        statBars(b, 70, cy + 110, W - 140, carIdx, s.carOwned[carIdx]);
-        float by = cy + Math.min(ch - 140, 340);
+        b.textFit(b.body, d.blurb, cx, cy + 44, 30f, pw - 60, 0xFF7A6A90, UIBatch.CENTER, 0, 0);
+        statBars(b, px + 50, cy + 100, pw - 100, carIdx, s.carOwned[carIdx]);
+        float by = cy + Math.min(ch - 125, 320);
+        float bw = Math.min(440f, pw - 80);
         if (s.carOwned[carIdx]) {
             if (s.selectedCar == carIdx) {
-                ui.button("sel", W / 2 - 220, by, 440, 110, 0xFF34D058, "DRIVING!", 52f, false);
-            } else if (ui.button("sel", W / 2 - 220, by, 440, 110, 0xFF34D058, "DRIVE THIS", 52f)) {
+                ui.button("sel", cx - bw / 2, by, bw, 104, 0xFF34D058, "DRIVING!", 50f, false);
+            } else if (ui.button("sel", cx - bw / 2, by, bw, 104, 0xFF34D058, "DRIVE THIS", 50f)) {
                 s.selectedCar = carIdx;
                 s.markDirty();
                 s.flush();
@@ -191,7 +198,7 @@ public final class GarageScreen extends Screen {
             }
         } else {
             boolean afford = s.coins >= d.price;
-            if (ui.button("buy", W / 2 - 220, by, 440, 110, afford ? 0xFFFF9A2B : 0xFFB8B0C8, "BUY  " + d.price, 52f)) {
+            if (ui.button("buy", cx - bw / 2, by, bw, 104, afford ? 0xFFFF9A2B : 0xFFB8B0C8, "BUY  " + d.price, 50f)) {
                 if (s.spend(d.price)) {
                     s.carOwned[carIdx] = true;
                     s.selectedCar = carIdx;
@@ -208,30 +215,31 @@ public final class GarageScreen extends Screen {
         }
     }
 
-    private boolean needOwned(UIBatch b, float cy, float W) {
+    private boolean needOwned(UIBatch b, float px, float pw, float cy) {
         if (s().carOwned[carIdx]) return true;
-        b.text(b.title, "BUY THIS CAR FIRST!", W / 2, cy + 120, 44f, 0xFF8E62FF, UIBatch.CENTER, 0, 0);
+        b.text(b.title, "BUY THIS CAR FIRST!", px + pw / 2, cy + 120, 44f, 0xFF8E62FF, UIBatch.CENTER, 0, 0);
         return false;
     }
 
-    private void tabUpgrade(UIBatch b, UI ui, float cy, float ch, float W) {
-        if (!needOwned(b, cy, W)) return;
+    private void tabUpgrade(UIBatch b, UI ui, float px, float pw, float cy, float ch) {
+        if (!needOwned(b, px, pw, cy)) return;
         Save s = s();
-        float rowH = Math.min(120f, (ch - 40) / 4f);
+        float rowH = Math.min(115f, (ch - 30) / 4f);
         for (int i = 0; i < 4; i++) {
-            float y = cy + 30 + i * rowH + rowH / 2;
+            float y = cy + 18 + i * rowH + rowH / 2;
             int lv = s.levels[carIdx][i];
-            b.text(b.title, CarDef.STAT_NAME[i], 60, y - 16, 38f, TAB_COLORS[i], UIBatch.LEFT, 0xFF2A1840, 3f);
+            b.text(b.title, CarDef.STAT_NAME[i], px + 36, y - 16, 36f, TAB_COLORS[i], UIBatch.LEFT, 0xFF2A1840, 3f);
             for (int k = 0; k < CarDef.MAX_LEVEL; k++) {
-                float px = 66 + k * 46;
-                b.shape(px + 18, y + 26, 38, 22, 11, k < lv ? 0xFFFFC21F : 0xFFEDE6F6, 0xFF2A1840, k < lv ? 3f : 0f, 0.3f, 0, 0);
+                float x = px + 42 + k * 46;
+                b.shape(x + 18, y + 24, 38, 22, 11, k < lv ? 0xFFFFC21F : 0xFFEDE6F6, 0xFF2A1840, k < lv ? 3f : 0f, 0.3f, 0, 0);
             }
+            float bx = px + pw - 270;
             if (lv >= CarDef.MAX_LEVEL) {
-                b.text(b.title, "MAX!", W - 150, y, 44f, 0xFF34D058, UIBatch.CENTER, 0, 0);
+                b.text(b.title, "MAX!", bx + 115, y, 44f, 0xFF34D058, UIBatch.CENTER, 0, 0);
             } else {
                 int cost = Save.upgradeCost(lv);
                 boolean afford = s.coins >= cost;
-                if (ui.button("up" + i, W - 290, y - 44, 230, 88, afford ? 0xFF34D058 : 0xFFB8B0C8, "+ " + cost, 40f)) {
+                if (ui.button("up" + i, bx, y - 40, 230, 82, afford ? 0xFF34D058 : 0xFFB8B0C8, "+ " + cost, 38f)) {
                     if (s.spend(cost)) {
                         s.levels[carIdx][i]++;
                         s.markDirty();
@@ -250,18 +258,14 @@ public final class GarageScreen extends Screen {
     }
 
     private void segmented(UIBatch b, UI ui, float cx, float y, String a, String c, boolean second, String id) {
-        float w = 220;
-        if (ui.hit(id + "a", cx - w, y, w, 64) && second) {
-            toggleSeg(id, false);
-        }
-        if (ui.hit(id + "b", cx, y, w, 64) && !second) {
-            toggleSeg(id, true);
-        }
-        b.shape(cx, y + 32, w * 2 + 12, 76, 38, 0xFFEDE6F6, 0, 0, 0, 0, 0);
+        float w = 200;
+        if (ui.hit(id + "a", cx - w, y, w, 60) && second) toggleSeg(id, false);
+        if (ui.hit(id + "b", cx, y, w, 60) && !second) toggleSeg(id, true);
+        b.shape(cx, y + 30, w * 2 + 12, 72, 36, 0xFFEDE6F6, 0, 0, 0, 0, 0);
         float sx = second ? cx + w / 2 : cx - w / 2;
-        b.shape(sx, y + 32, w, 64, 32, 0xFF8E62FF, 0, 0, 0.3f, 0, 0);
-        b.text(b.title, a, cx - w / 2, y + 34, 32f, !second ? 0xFFFFFFFF : 0xFF8A7AA0, UIBatch.CENTER, 0, 0);
-        b.text(b.title, c, cx + w / 2, y + 34, 32f, second ? 0xFFFFFFFF : 0xFF8A7AA0, UIBatch.CENTER, 0, 0);
+        b.shape(sx, y + 30, w, 60, 30, 0xFF8E62FF, 0, 0, 0.3f, 0, 0);
+        b.text(b.title, a, cx - w / 2, y + 32, 30f, !second ? 0xFFFFFFFF : 0xFF8A7AA0, UIBatch.CENTER, 0, 0);
+        b.text(b.title, c, cx + w / 2, y + 32, 30f, second ? 0xFFFFFFFF : 0xFF8A7AA0, UIBatch.CENTER, 0, 0);
     }
 
     private void toggleSeg(String id, boolean v) {
@@ -272,79 +276,80 @@ public final class GarageScreen extends Screen {
         game.ui.resetScroll("content");
     }
 
-    private void tabPaint(UIBatch b, UI ui, float cy, float ch, float W) {
-        if (!needOwned(b, cy, W)) return;
+    private void tabPaint(UIBatch b, UI ui, float px, float pw, float cy, float ch) {
+        if (!needOwned(b, px, pw, cy)) return;
         Save s = s();
-        segmented(b, ui, W / 2, cy + 24, "BODY", "ACCENT", accentMode, "pm");
+        segmented(b, ui, px + pw / 2, cy + 18, "BODY", "ACCENT", accentMode, "pm");
         int n = Palette.PAINT.length;
-        int cols = 6;
-        float cell = (W - 100) / cols;
-        float gy = cy + 110;
-        float buyH = pendingKind >= 0 ? 120 : 0;
-        float gh = ch - 120 - buyH;
-        float content = (float) Math.ceil(n / (float) cols) * (cell + 40);
-        float off = ui.beginScroll("content", 30, gy, W - 60, gh, content);
+        int cols = pw > 720 ? 9 : 6;
+        float cell = (pw - 50) / cols;
+        float gy = cy + 96;
+        float buyH = pendingKind >= 0 ? 110 : 0;
+        float gh = ch - 104 - buyH;
+        float rowH = cell * 0.8f + 34;
+        float content = (float) Math.ceil(n / (float) cols) * rowH + 10;
+        float off = ui.beginScroll("content", px + 10, gy, pw - 20, gh, content);
         int current = accentMode ? s.carAccent[carIdx] : s.carPaint[carIdx];
         for (int i = 0; i < n; i++) {
-            float x = 50 + (i % cols) * cell + cell / 2;
-            float y = gy + (i / cols) * (cell + 40) + cell / 2 + 10 - off;
+            float x = px + 25 + (i % cols) * cell + cell / 2;
+            float y = gy + (i / cols) * rowH + cell * 0.4f + 8 - off;
             int rgb = Palette.paintColor(i, t);
             boolean owned = s.paintOwned[i];
             boolean sel = current == i;
             boolean prev = pendingKind == (accentMode ? 1 : 0) && pendingItem == i;
-            float r = cell * 0.38f;
-            if (sel || prev) b.circle(x, y, r + 9, prev ? 0xFFFFC21F : 0xFF2A1840);
+            float r = Math.min(cell * 0.36f, 38f);
+            if (sel || prev) b.circle(x, y, r + 8, prev ? 0xFFFFC21F : 0xFF2A1840);
             b.shape(x, y, r * 2, r * 2, r, 0xFF000000 | rgb, 0xFFFFFFFF, 4f, 0.5f, 0, 0);
             if (!owned) {
                 b.circle(x, y, r, 0x50200040);
                 ui.iconLock(x, y, r * 0.9f, 0xFFFFFFFF);
-                b.text(b.body, String.valueOf(Palette.PAINT_PRICE[i]), x, y + r + 22, 22f, 0xFFE89A00, UIBatch.CENTER, 0, 0);
+                b.text(b.body, String.valueOf(Palette.PAINT_PRICE[i]), x, y + r + 20, 21f, 0xFFE89A00, UIBatch.CENTER, 0, 0);
             } else {
-                b.textFit(b.body, Palette.PAINT_NAME[i], x, y + r + 22, 20f, cell - 4, 0xFF7A6A90, UIBatch.CENTER, 0, 0);
+                b.textFit(b.body, Palette.PAINT_NAME[i], x, y + r + 20, 19f, cell - 4, 0xFF7A6A90, UIBatch.CENTER, 0, 0);
             }
-            if (ui.hit("paint" + i, x - cell / 2, y - cell / 2, cell, cell) && y > gy && y < gy + gh) {
+            if (ui.hit("paint" + i, x - cell / 2, y - r - 6, cell, rowH) && y > gy && y < gy + gh) {
                 pick(accentMode ? 1 : 0, i, owned);
             }
         }
         ui.endScroll();
-        buyBar(b, ui, W, cy + ch - 125);
+        buyBar(b, ui, px, pw, cy + ch - 112);
     }
 
-    private void tabStyle(UIBatch b, UI ui, float cy, float ch, float W) {
-        if (!needOwned(b, cy, W)) return;
+    private void tabStyle(UIBatch b, UI ui, float px, float pw, float cy, float ch) {
+        if (!needOwned(b, px, pw, cy)) return;
         Save s = s();
-        segmented(b, ui, W / 2, cy + 24, "TOPPER", "WHEELS", wheelMode, "sm");
+        segmented(b, ui, px + pw / 2, cy + 18, "TOPPER", "WHEELS", wheelMode, "sm");
         String[] names = wheelMode ? Palette.WHEEL_NAME : Palette.TOPPER_NAME;
         int[] prices = wheelMode ? Palette.WHEEL_PRICE : Palette.TOPPER_PRICE;
         boolean[] owned = wheelMode ? s.wheelOwned : s.topperOwned;
         int current = wheelMode ? s.carWheel[carIdx] : s.carTopper[carIdx];
         int kind = wheelMode ? 3 : 2;
-        int cols = 3;
-        float cw = (W - 100) / cols, chh = 110;
-        float gy = cy + 110;
-        float buyH = pendingKind >= 0 ? 120 : 0;
-        float gh = ch - 120 - buyH;
-        float content = (float) Math.ceil(names.length / (float) cols) * (chh + 14) + 10;
-        float off = ui.beginScroll("content", 30, gy, W - 60, gh, content);
+        int cols = pw > 720 ? 4 : 3;
+        float cw = (pw - 50) / cols, chh = 96;
+        float gy = cy + 96;
+        float buyH = pendingKind >= 0 ? 110 : 0;
+        float gh = ch - 104 - buyH;
+        float content = (float) Math.ceil(names.length / (float) cols) * (chh + 12) + 10;
+        float off = ui.beginScroll("content", px + 10, gy, pw - 20, gh, content);
         for (int i = 0; i < names.length; i++) {
-            float x = 50 + (i % cols) * cw;
-            float y = gy + 6 + (i / cols) * (chh + 14) - off;
+            float x = px + 25 + (i % cols) * cw;
+            float y = gy + 6 + (i / cols) * (chh + 12) - off;
             boolean sel = current == i;
             boolean prev = pendingKind == kind && pendingItem == i;
             int fill = sel ? 0xFF8E62FF : (prev ? 0xFFFFC21F : 0xFFF3EEFA);
             b.shape(x + cw / 2 - 4, y + chh / 2, cw - 12, chh, 22, fill, 0xFF2A1840, sel || prev ? 4f : 0f, 0.25f, 0, 0);
             int tc = sel ? 0xFFFFFFFF : 0xFF2A1840;
-            b.textFit(b.title, names[i], x + cw / 2 - 4, y + chh / 2 - (owned[i] ? 0 : 14), 30f, cw - 30, tc, UIBatch.CENTER, 0, 0);
+            b.textFit(b.title, names[i], x + cw / 2 - 4, y + chh / 2 - (owned[i] ? 0 : 13), 28f, cw - 30, tc, UIBatch.CENTER, 0, 0);
             if (!owned[i]) {
-                ui.coin(x + cw / 2 - 40, y + chh / 2 + 24, 12);
-                b.text(b.body, String.valueOf(prices[i]), x + cw / 2 - 24, y + chh / 2 + 25, 24f, 0xFFE89A00, UIBatch.LEFT, 0, 0);
+                ui.coin(x + cw / 2 - 38, y + chh / 2 + 22, 12);
+                b.text(b.body, String.valueOf(prices[i]), x + cw / 2 - 22, y + chh / 2 + 23, 23f, 0xFFE89A00, UIBatch.LEFT, 0, 0);
             }
             if (ui.hit("style" + kind + "_" + i, x, y, cw - 8, chh) && y + chh / 2 > gy && y + chh / 2 < gy + gh) {
                 pick(kind, i, owned[i]);
             }
         }
         ui.endScroll();
-        buyBar(b, ui, W, cy + ch - 125);
+        buyBar(b, ui, px, pw, cy + ch - 112);
     }
 
     private void pick(int kind, int item, boolean owned) {
@@ -368,7 +373,7 @@ public final class GarageScreen extends Screen {
         }
     }
 
-    private void buyBar(UIBatch b, UI ui, float W, float y) {
+    private void buyBar(UIBatch b, UI ui, float px, float pw, float y) {
         if (pendingKind < 0) return;
         Save s = s();
         int price;
@@ -383,9 +388,9 @@ public final class GarageScreen extends Screen {
             price = Palette.WHEEL_PRICE[pendingItem];
             name = Palette.WHEEL_NAME[pendingItem];
         }
-        b.textFit(b.title, name, 60, y + 50, 38f, 230, 0xFF2A1840, UIBatch.LEFT, 0, 0);
+        b.textFit(b.title, name, px + 36, y + 50, 36f, pw - 380, 0xFF2A1840, UIBatch.LEFT, 0, 0);
         boolean afford = s.coins >= price;
-        if (ui.button("buyitem", W - 360, y + 4, 300, 96, afford ? 0xFFFF9A2B : 0xFFB8B0C8, "BUY " + price, 42f)) {
+        if (ui.button("buyitem", px + pw - 330, y + 6, 290, 90, afford ? 0xFFFF9A2B : 0xFFB8B0C8, "BUY " + price, 40f)) {
             if (s.spend(price)) {
                 if (pendingKind <= 1) s.paintOwned[pendingItem] = true;
                 else if (pendingKind == 2) s.topperOwned[pendingItem] = true;

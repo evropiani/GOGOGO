@@ -19,7 +19,11 @@ public final class Car {
 
     // physics
     public float x, z, y, vx, vz, vy, yaw;
-    public float inX, inZ;        // desired direction (length 0..1)
+    public float inX, inZ;        // desired direction (length 0..1), used by bots
+    /** Button controls (the player): steer -1 left .. 1 right, throttle 1 gas .. -1 brake/reverse. */
+    public boolean manual;
+    public float steer, throttle;
+    public float manualTurn;
     public boolean wantBoost;
     public boolean alive = true, falling;
     public float boostT, boostCd;
@@ -61,6 +65,7 @@ public final class Car {
         boostImpulse = 9f + bo * 1.3f;
         boostCooldown = Math.max(1.4f, 4.2f - bo * 0.35f);
         mass = 0.9f + we * 0.18f;
+        manualTurn = 2.3f + gr * 0.22f;
         radius = 1.08f;
     }
 
@@ -96,7 +101,24 @@ public final class Car {
         if (mag > 1f) mag = 1f;
         float thr = 0f;
         float yawRate = 0f;
-        if (mag > 0.08f) {
+        boolean braking = false, reversing = false;
+        if (manual && bot == null) {
+            float st = canDrive ? Math.max(-1f, Math.min(1f, steer)) : 0f;
+            float th = canDrive ? Math.max(-1f, Math.min(1f, throttle)) : 0f;
+            float fwd0 = vx * fx + vz * fz;
+            float dir = fwd0 < -0.3f ? -1f : 1f;
+            float rate = manualTurn * Math.min(1f, 0.35f + Math.abs(fwd0) / 6f);
+            // steering right turns clockwise seen from above (yaw decreases)
+            yawRate = -st * rate * dir;
+            yaw = Ease.wrapAngle(yaw + yawRate * dt);
+            fx = (float) Math.sin(yaw);
+            fz = (float) Math.cos(yaw);
+            if (th > 0) thr = th;
+            else if (th < 0) {
+                if (fwd0 > 0.6f) braking = true;
+                else reversing = true;
+            }
+        } else if (mag > 0.08f) {
             float target = (float) Math.atan2(inX, inZ);
             float diff = Ease.wrapAngle(target - yaw);
             float maxTurn = turnRate * dt * (0.55f + 0.45f * mag);
@@ -112,6 +134,10 @@ public final class Car {
 
         // throttle
         float ax = fx * accel * thr, az = fz * accel * thr;
+        if (reversing) {
+            ax = -fx * accel * 0.55f;
+            az = -fz * accel * 0.55f;
+        }
         vx += ax * dt;
         vz += az * dt;
 
@@ -136,8 +162,9 @@ public final class Car {
         float g = (float) Math.exp(-grip * dt * (boostT > 0 ? 0.35f : 1f));
         latx *= g;
         latz *= g;
-        float drag = thr > 0.05f ? 0.35f : 2.6f;
+        float drag = braking ? 7f : (thr > 0.05f || reversing ? 0.35f : 2.6f);
         fwd *= (float) Math.exp(-drag * dt);
+        if (fwd < -maxSpeed * 0.45f) fwd = -maxSpeed * 0.45f;
         vx = fx * fwd + latx;
         vz = fz * fwd + latz;
 

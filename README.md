@@ -27,13 +27,17 @@ You and 99 other drivers spawn on a giant checkered grid of colorful tiles float
 
 Bump, shove and boost into other cars to knock them off their tile — but watch your own edges!
 
-### Controls
+### Controls (landscape)
 
 | Action | How |
 | --- | --- |
-| Drive | Touch and drag anywhere (floating joystick) |
-| Boost | Tap the **BOOST** button (has a cooldown) — boosted cars hit much harder |
+| Steer | Hold the **◀ / ▶** arrow buttons (bottom left) |
+| Gas / brake | Hold **GAS** / **BRAKE** (bottom right) — keep braking to reverse |
+| Boost | Tap **BOOST** (above GAS, has a cooldown) — boosted cars hit much harder |
+| Camera | Camera button (top right): **NEAR**, **FAR** or **HOOD** view |
 | Pause | Pause button, top left (or Android back) |
+
+"Swap controls" in the settings mirrors the arrows and pedals for left-handed play.
 
 When you're knocked out you can **watch** the rest of the match or skip to the results.
 
@@ -44,11 +48,11 @@ When you're knocked out you can **watch** the rest of the match or skip to the r
   Bumper Bean, Zoomba, Taco Truck, Hot Dog, Ice Scream, Monster Cube, Rocket Toaster, Bathtub Bomber and Sofa So Good.
 * **Upgrade** every stat of every car (5 levels each).
 * **Customize**: body paint, accent paint (18 colors incl. animated Rainbow), toppers (traffic cone, propeller cap, crown, shark fin, ...) and wheels (candy, donut, gold, ...).
-* **Settings**: sound, music, vibration, camera shake, color symbols (for color-blind players), left-handed boost button.
+* **Settings**: sound, music, vibration, camera shake, color symbols (for color-blind players), swap controls.
 
 ## Install
 
-Grab the signed APK from the [Releases](../../releases) page (or from `releases/` in this repo), copy it to an Android phone and open it. Requires Android 7.0+ (API 24) and OpenGL ES 3.0.
+Grab the signed APK from the [Releases](../../releases) page (or from `releases/` in this repo), copy it to an Android phone and open it. Requires Android 7.0+ (API 24) and OpenGL ES 3.0. The game runs in landscape.
 
 ## Building
 
@@ -94,7 +98,7 @@ No game engine and no third-party runtime libraries — everything is custom and
 The engine runs unchanged on desktop OpenGL ES (via LWJGL + Mesa), which makes it possible to script sessions and take screenshots without a device:
 
 ```bash
-tools/desktop/run.sh 540 1170 "wait 60; shot title.png; tap 360 1090; wait 300; shot match.png"
+tools/desktop/run.sh 1280 720 "wait 60; shot title.png; tap 922 310; wait 300; shot match.png"
 ```
 
 `SimTest` (in `tools/desktop`) runs headless bot-only matches to check round length and elimination pacing.

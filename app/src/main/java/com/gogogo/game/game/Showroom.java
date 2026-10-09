@@ -17,6 +17,8 @@ public final class Showroom {
 
     /** Where the car sits on screen, as a fraction of the screen height from the top. */
     public float screenY = 0.3f;
+    /** Horizontal placement, as a fraction of the screen width from the left. */
+    public float screenX = 0.5f;
     public float distance = 17f;
     public float height = 7f;
 
@@ -68,8 +70,12 @@ public final class Showroom {
         double below = Math.atan((height - 1f) / distance);
         double off = Math.atan((1f - 2f * screenY) * Math.tan(Math.toRadians(fov / 2)));
         float ty = height - distance * (float) Math.tan(below + off);
+        // slide the camera sideways so the car lands at screenX
+        float aspect = game.cam.width / (float) Math.max(1, game.cam.height);
+        float reach = (float) Math.sqrt(distance * distance + (height - 1f) * (height - 1f));
+        float sx = -(2f * screenX - 1f) * reach * (float) Math.tan(Math.toRadians(fov / 2)) * aspect;
         game.cam.fov = fov;
-        game.cam.set(0, height, distance, 0, ty, 0);
+        game.cam.set(sx, height, distance, sx, ty, 0);
         game.beginWorld();
         M4.trs(m, 0, 0, 0, spin * 0.3f, 0, 0, 1, 1, 1);
         game.r.draw(game.art.pedestal, m, pedestalColor, pedestalAccent, 0f);

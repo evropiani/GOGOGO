@@ -164,7 +164,7 @@ public final class Car {
         latz *= g;
         float drag = braking ? 7f : (thr > 0.05f || reversing ? 0.35f : 2.6f);
         fwd *= (float) Math.exp(-drag * dt);
-        if (fwd < -maxSpeed * 0.45f) fwd = -maxSpeed * 0.45f;
+        if (reversing && fwd < -maxSpeed * 0.45f) fwd = -maxSpeed * 0.45f;
         vx = fx * fwd + latx;
         vz = fz * fwd + latz;
 

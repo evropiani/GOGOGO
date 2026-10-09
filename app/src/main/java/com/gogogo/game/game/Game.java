@@ -100,7 +100,7 @@ public final class Game {
         time += dt;
         readInsets(); // the notch moves sides when the phone is flipped
         input.poll(b.scale, dt);
-        if (fadeDir == 0) screen.preInput();
+        if (fadeDir <= 0) screen.preInput();
         ui.frame(dt);
 
         if (input.backPressed() && fadeDir == 0) {

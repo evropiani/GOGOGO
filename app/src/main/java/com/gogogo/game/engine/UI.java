@@ -41,6 +41,13 @@ public final class UI {
             relX = ptr.x;
             relY = ptr.y;
         }
+        if (ptr != null && ptr.owner != 0 && ptr.owner != OWNER_UI) {
+            // a gameplay control took this touch: let other fingers drive the UI
+            ptr = null;
+            pressed = null;
+            dragging = false;
+            scrollId = null;
+        }
         if (ptr != null && !ptr.down && !ptr.justUp) {
             ptr = null;
             pressed = null;

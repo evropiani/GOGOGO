@@ -17,7 +17,7 @@ public final class MatchScreen extends Screen {
 
     private boolean paused;
     private boolean camMenu;
-    private float menuX, menuY; // camera menu area: x > menuX and y < menuY
+    private float menuX, menuY, menuTop, camBtnX; // camera menu panel area and the button column
     private final boolean[] held = new boolean[5];
     private final float[] press = new float[5];
     private final float[] cx = new float[5], cy = new float[5];
@@ -165,7 +165,13 @@ public final class MatchScreen extends Screen {
     private void layoutControls() {
         UIBatch b = game.b;
         float W = b.width, H = b.height;
-        float left = game.safeLeft + 20, right = game.safeRight + 20, bottom = H - game.safeBottom;
+        float sl = game.safeLeft, sr = game.safeRight;
+        if (game.save.leftHanded) {
+            float t = sl;
+            sl = sr;
+            sr = t;
+        }
+        float left = sl + 20, right = sr + 20, bottom = H - game.safeBottom;
         cx[C_LEFT] = left + 100;
         cx[C_RIGHT] = left + 290;
         cy[C_LEFT] = cy[C_RIGHT] = bottom - 120;
@@ -205,12 +211,18 @@ public final class MatchScreen extends Screen {
         if (!controlsActive()) return;
         Car p = match.player;
         for (Input.Pointer ptr : game.input.pointers) {
-            if (!ptr.justDown || ptr.owner != 0) continue;
-            if (camMenu && ptr.x > menuX && ptr.y < menuY) continue; // let the camera menu have it
+            if (ptr.owner != 0) continue;
+            // fingers already resting on a control when the match appears count too
+            boolean fresh = ptr.justDown || (ptr.down && match.phase == Match.INTRO);
+            if (!fresh) continue;
+            if (camMenu) {
+                if (ptr.x > menuX && ptr.y > menuTop && ptr.y < menuY) continue; // the menu handles it
+                if (ptr.justDown && !(ptr.x > camBtnX && ptr.y < menuTop)) camMenu = false;
+            }
             int c = controlAt(ptr.x, ptr.y);
             if (c < 0) continue;
             ptr.owner = OWNER_CTRL;
-            if (c == C_BOOST && p.boostCd <= 0) {
+            if (c == C_BOOST && ptr.justDown && p.boostCd <= 0) {
                 p.wantBoost = true;
                 game.vibrate(15);
             }
@@ -395,6 +407,7 @@ public final class MatchScreen extends Screen {
         float W = b.width, H = b.height, top = game.safeTop;
         float left = game.safeLeft + 20, right = game.safeRight + 20;
         Car p = match.player;
+        layoutControls();
 
         drawDanger(b, W, H);
         view.drawPopups(b);
@@ -407,7 +420,6 @@ public final class MatchScreen extends Screen {
             if (ui.roundButton("pause", left + 40, top + 52, 38, 0xFFFFFFFF)) {
                 paused = true;
                 camMenu = false;
-                game.input.reset();
             }
             ui.iconPause(left + 40, top + 52 + ui.lastRoundPress, 38, 0xFF2A1840);
         }
@@ -425,9 +437,10 @@ public final class MatchScreen extends Screen {
             drawControls(b, p);
             if (match.phase == Match.INTRO && game.save.matches < 3) {
                 float hy = H * 0.6f;
-                b.shape(W / 2, hy, Math.min(900f, W - 60), 140, 40, 0xD02A1840, 0, 0, 0, 0, 0);
-                b.text(b.title, "GET ON THE COLOR SHOWN UP TOP", W / 2, hy - 26, 38f, 0xFFFFE14D, UIBatch.CENTER, 0, 0);
-                b.text(b.body, "before the timer runs out. Last car standing wins!", W / 2, hy + 30, 30f, 0xFFFFFFFF, UIBatch.CENTER, 0, 0);
+                float hw = Math.max(420f, Math.min(900f, W - 2 * (Math.max(game.safeLeft, game.safeRight) + 20 + 190)));
+                b.shape(W / 2, hy, hw, 140, 40, 0xD02A1840, 0, 0, 0, 0, 0);
+                b.textFit(b.title, "GET ON THE COLOR SHOWN UP TOP", W / 2, hy - 26, 38f, hw - 40, 0xFFFFE14D, UIBatch.CENTER, 0, 0);
+                b.textFit(b.body, "before the timer runs out. Last car standing wins!", W / 2, hy + 30, 30f, hw - 40, 0xFFFFFFFF, UIBatch.CENTER, 0, 0);
             } else if (match.round <= 1 && !usedGas) {
                 b.alpha(0.6f + (float) Math.sin(game.time * 4f) * 0.3f);
                 b.text(b.body, "ARROWS TO STEER  -  HOLD GAS TO GO", W / 2, top + 178, 28f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 4f);
@@ -465,6 +478,8 @@ public final class MatchScreen extends Screen {
 
     private void drawCameraButton(UIBatch b, UI ui, float W, float top, float right) {
         float bx = W - right - 40, by = top + 52;
+        camBtnX = bx - 60;
+        menuTop = by + 40;
         if (ui.roundButton("cam", bx, by, 38, camMenu ? 0xFFFFE14D : 0xFFFFFFFF)) camMenu = !camMenu;
         drawCameraIcon(b, bx, by + ui.lastRoundPress, 1f);
         b.text(b.body, CAM_NAME[game.save.camMode], bx - 52, by + 2, 26f, 0xFFFFFFFF, UIBatch.RIGHT, 0xFF2A1840, 4f);
@@ -472,6 +487,7 @@ public final class MatchScreen extends Screen {
         float pw = 220, ph = 3 * 76 + 24;
         float px = W - right - pw, py = by + 50;
         menuX = px - 10;
+        menuTop = py - 10;
         menuY = py + ph + 10;
         ui.block(px, py, pw, ph);
         ui.panel(px, py, pw, ph, 0xFFFFFFFF);
@@ -725,7 +741,6 @@ public final class MatchScreen extends Screen {
             return true;
         }
         paused = !paused;
-        game.input.reset();
         return true;
     }
 

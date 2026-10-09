@@ -60,9 +60,16 @@ public final class RevealScreen extends Screen {
         float k = Ease.outElastic(Math.min(1f, Math.max(0f, t - 0.5f) * 1.2f));
         b.textShadow(b.title, "SECRET UNLOCKED!", W / 2, top + 80, 96f * k, 0xFFFFE14D, UIBatch.CENTER, 0xFF2A1840, 10f, 11f, 0x70200040);
         float k2 = Ease.outBack(Math.min(1f, Math.max(0f, t - 1.4f) * 2f));
-        b.textShadow(b.title, Cars.ALL[Cars.SECRET].name, W / 2, bottom - 110, 78f * k2, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 8f, 10f, 0x70200040);
-        b.text(b.body, "You found it. Quack responsibly.", W / 2, bottom - 48, 32f * k2, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 4f);
-        if (t > 2f && game.ui.button("awesome", W - right - 330, bottom - 150, 330, 120, 0xFF34D058, "QUACK!", 64f)) {
+        // name centered, unless that would put it under the button
+        String name = Cars.ALL[Cars.SECRET].name;
+        float btnX = W - right - 330, nw = b.title.width(name, 78f), nx = W / 2, maxW = W - 80;
+        if (nx + nw / 2 > btnX - 20) {
+            nx = (game.safeLeft + btnX) / 2;
+            maxW = btnX - game.safeLeft - 60;
+        }
+        b.textShadow(b.title, name, nx, bottom - 110, Math.min(78f, 78f * maxW / nw) * k2, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 8f, 10f, 0x70200040);
+        b.textFit(b.body, "You found it. Quack responsibly.", nx, bottom - 48, 32f * k2, maxW, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 4f);
+        if (t > 2f && game.ui.button("awesome", btnX, bottom - 150, 330, 120, 0xFF34D058, "QUACK!", 64f)) {
             game.setScreen(next);
         }
     }

@@ -245,7 +245,17 @@ public final class MatchView implements Match.Listener {
         for (int i = 0; i < POPS; i++) {
             if (popT[i] <= 0) continue;
             float t = popT[i];
-            if (!game.cam.project(popX[i], popY[i] + (1f - t) * 3f, popZ[i], proj)) continue;
+            float px = popX[i], py = popY[i] + (1f - t) * 3f, pz = popZ[i];
+            if (hoodCar != null) {
+                // popups on top of the hood car would sit above the camera: show them ahead of the hood
+                float dx = px - hoodCar.x, dz = pz - hoodCar.z;
+                if (dx * dx + dz * dz < 9f) {
+                    px = hoodCar.x + (float) Math.sin(hoodCar.yaw) * 7f;
+                    pz = hoodCar.z + (float) Math.cos(hoodCar.yaw) * 7f;
+                    py = hoodCar.y + hoodCar.def.hoodY + 1f + (1f - t) * 1.5f;
+                }
+            }
+            if (!game.cam.project(px, py, pz, proj)) continue;
             float x = proj[0] / b.scale, y = proj[1] / b.scale;
             float sc = Ease.outBack(Math.min(1f, (1f - t) * 6f));
             b.alpha(Math.min(1f, t * 3f));

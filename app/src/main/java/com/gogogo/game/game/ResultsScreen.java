@@ -131,8 +131,9 @@ public final class ResultsScreen extends Screen {
         ui.panel(px, py, pw, ph, 0xFFFFFFFF);
         for (int i = 0; i < rewardCount; i++) {
             float y = py + 42 + i * rowH;
-            b.text(b.body, rewardName[i], px + 36, y, 32f, 0xFF2A1840, UIBatch.LEFT, 0, 0);
-            b.text(b.title, "+" + rewardVal[i], px + pw - 76, y, 36f, 0xFFE89A00, UIBatch.RIGHT, 0, 0);
+            String v = "+" + rewardVal[i];
+            b.textFit(b.body, rewardName[i], px + 36, y, 32f, pw - 128 - b.title.width(v, 36f), 0xFF2A1840, UIBatch.LEFT, 0, 0);
+            b.text(b.title, v, px + pw - 76, y, 36f, 0xFFE89A00, UIBatch.RIGHT, 0, 0);
             ui.coin(px + pw - 48, y, 16);
         }
         float ty = py + ph - 46;

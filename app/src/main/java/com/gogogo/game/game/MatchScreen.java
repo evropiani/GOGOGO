@@ -248,7 +248,10 @@ public final class MatchScreen extends Screen {
 
     // ------------------------------------------------------------------ update
 
+    private float frameDt = 1f / 60f;
+
     public void update(float dt) {
+        frameDt = dt;
         if (paused) return;
         handleControls(dt);
         if (skipping) {
@@ -310,7 +313,7 @@ public final class MatchScreen extends Screen {
 
     public boolean render3d() {
         Car t = camTarget();
-        float dt = 1f / 60f;
+        float dt = frameDt;
         int mode = game.save.camMode;
         float fov;
         float wex, wey, wez, wtx, wty, wtz;
@@ -342,13 +345,14 @@ public final class MatchScreen extends Screen {
                 CarDef d = t.def;
                 wex = t.x + fx * d.hoodZ;
                 wez = t.z + fz * d.hoodZ;
-                wey = t.y + t.hop + d.hoodY;
+                wey = t.y + t.hop + d.hoodY * (1f + Math.max(0f, Math.min(0.35f, t.squash))); // follow the body stretch
                 wtx = wex + fx * 12f;
                 wtz = wez + fz * 12f;
                 wty = wey - 2.3f;
                 fov = 70f;
                 game.cam.near = 0.2f;
-                view.hoodCar = t;
+                // keep the player's marker during the bird's-eye part of the intro
+                if (match.phase != Match.INTRO || match.phaseT > Match.INTRO_TIME * 0.8f) view.hoodCar = t;
             } else if (mode == 0) {
                 float back = 8.5f + (drop ? 2f : 0f), up = 4.4f + (drop ? 1.5f : 0f);
                 wex = t.x - fx * back;
@@ -369,11 +373,11 @@ public final class MatchScreen extends Screen {
                 fov = 58f;
             }
             if (match.phase == Match.INTRO) {
-                // swoop down from a bird's-eye view
+                // swoop down from a bird's-eye view behind the car (the car can't turn yet)
                 float k = Ease.inOutSine(Math.min(1f, match.phaseT / (Match.INTRO_TIME * 0.9f)));
-                wex = Ease.lerp(t.x, wex, k);
+                wex = Ease.lerp(t.x - fx * 30f, wex, k);
                 wey = Ease.lerp(75f, wey, k);
-                wez = Ease.lerp(t.z - 30f, wez, k);
+                wez = Ease.lerp(t.z - fz * 30f, wez, k);
                 wtx = Ease.lerp(t.x, wtx, k);
                 wty = Ease.lerp(0f, wty, k);
                 wtz = Ease.lerp(t.z, wtz, k);
@@ -394,6 +398,7 @@ public final class MatchScreen extends Screen {
         tz += (wtz - tz) * k;
         game.cam.fov = Ease.approach(game.cam.fov, fov, 10f, dt);
         game.cam.set(ex, ey, ez, tx, ty, tz);
+        game.shakeScale = view.hoodCar != null ? 0.25f : 1f;
         game.beginWorld();
         view.draw();
         return true;
@@ -457,7 +462,10 @@ public final class MatchScreen extends Screen {
             float sc = Ease.outElastic(Math.min(1f, bigT * 2.2f));
             float fade = k > 0.75f ? 1f - (k - 0.75f) / 0.25f : 1f;
             b.alpha(fade);
-            float size = (bigText.length() <= 3 ? 170f : 104f) * sc;
+            float size = bigText.length() <= 3 ? 170f : 104f;
+            float maxW = W - game.safeLeft - game.safeRight - 60f, tw = b.title.width(bigText, size);
+            if (tw > maxW) size *= maxW / tw; // long bot names
+            size *= sc;
             b.textShadow(b.title, bigText, W / 2, H * 0.40f, size, bigColor, UIBatch.CENTER, 0xFF2A1840, size * 0.08f, 12f, 0x70200040);
             b.alpha(1f);
         }
@@ -484,8 +492,11 @@ public final class MatchScreen extends Screen {
         drawCameraIcon(b, bx, by + ui.lastRoundPress, 1f);
         b.text(b.body, CAM_NAME[game.save.camMode], bx - 52, by + 2, 26f, 0xFFFFFFFF, UIBatch.RIGHT, 0xFF2A1840, 4f);
         if (!camMenu) return;
-        float pw = 220, ph = 3 * 76 + 24;
-        float px = W - right - pw, py = by + 50;
+        float pw = 220, py = by + 50, step = 76f;
+        // keep the list above BOOST when it sits in the same corner
+        if (!game.save.leftHanded) step = Math.max(56f, Math.min(76f, (cy[C_BOOST] - 74f - py - 24f) / 3f));
+        float ph = 3 * step + 24;
+        float px = W - right - pw;
         menuX = px - 10;
         menuTop = py - 10;
         menuY = py + ph + 10;
@@ -493,7 +504,7 @@ public final class MatchScreen extends Screen {
         ui.panel(px, py, pw, ph, 0xFFFFFFFF);
         for (int i = 0; i < 3; i++) {
             boolean on = game.save.camMode == i;
-            if (ui.button("cam" + i, px + 14, py + 12 + i * 76, pw - 28, 66, on ? 0xFF8E62FF : 0xFF3BA8FF, CAM_NAME[i], 34f)) {
+            if (ui.button("cam" + i, px + 14, py + 12 + i * step, pw - 28, step - 10, on ? 0xFF8E62FF : 0xFF3BA8FF, CAM_NAME[i], Math.min(34f, step * 0.5f))) {
                 game.save.camMode = i;
                 game.save.markDirty();
                 game.save.flush();

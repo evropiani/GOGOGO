@@ -19,8 +19,9 @@ public abstract class CarDef {
     public float wheelR = 0.4f, wheelW = 0.34f, wheelX = 0.8f, wheelZf = 0.8f, wheelZr = -0.8f;
     public float topY = 1.6f, topZ = 0f;
     public float radius = 1.15f;
-    /** Hood camera position (computed from the body mesh in Art). */
+    /** Hood camera position (computed from the body mesh in Art unless set with hood()). */
     public float hoodY = 1.8f, hoodZ = 0.6f;
+    public boolean hoodFixed;
 
     protected CarDef(int id, String name, String blurb, int price, float speed, float grip, float boost, float weight, int defPaint, int defAccent) {
         this.id = id;
@@ -30,6 +31,14 @@ public abstract class CarDef {
         this.stats = new float[]{speed, grip, boost, weight};
         this.defPaint = defPaint;
         this.defAccent = defAccent;
+    }
+
+    /** Places the hood camera by hand, for cars whose tallest part is not the cabin. */
+    public CarDef hood(float y, float z) {
+        hoodY = y;
+        hoodZ = z;
+        hoodFixed = true;
+        return this;
     }
 
     public CarDef wheels(float r, float w, float x, float zf, float zr) {

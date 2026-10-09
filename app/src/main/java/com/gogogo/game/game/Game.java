@@ -13,6 +13,8 @@ import com.gogogo.game.engine.UIBatch;
 public final class Game {
     /** The shorter screen side is this many UI units (the game runs in landscape). */
     public static final float UI_SHORT = 720f;
+    /** Narrowest UI width the layouts are designed for (16:9 at UI_SHORT). */
+    public static final float UI_MIN_W = 1280f;
 
     public final Platform platform;
     public final GL gl;
@@ -36,6 +38,8 @@ public final class Game {
     private boolean created;
     private long lastNanos;
     private float shakeT, shakeAmp;
+    /** Scales the next beginWorld()'s shake (the hood camera rides close to the roof). */
+    public float shakeScale = 1f;
 
     public Game(Platform platform) {
         this.platform = platform;
@@ -76,7 +80,7 @@ public final class Game {
         gl.glViewport(0, 0, width, height);
         cam.width = width;
         cam.height = height;
-        b.resize(width, height, UI_SHORT);
+        b.resize(width, height, UI_SHORT, UI_MIN_W);
         readInsets();
     }
 
@@ -148,11 +152,12 @@ public final class Game {
     /** Screens call this after placing the camera and before queueing geometry (applies shake, enables culling). */
     public void beginWorld() {
         if (shakeT > 0 && save.shake) {
-            float a = shakeAmp * (shakeT / 0.4f);
+            float a = shakeAmp * (shakeT / 0.4f) * shakeScale;
             cam.ex += (float) Math.sin(time * 71f) * a;
             cam.ey += (float) Math.sin(time * 53f + 1f) * a;
             cam.tx += (float) Math.sin(time * 61f + 2f) * a * 0.5f;
         }
+        shakeScale = 1f;
         cam.update();
         r.setFrustum(cam);
         worldBegun = true;

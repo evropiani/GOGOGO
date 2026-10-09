@@ -136,11 +136,14 @@ public final class UIBatch {
         boundTex = -1;
     }
 
-    /** Sets up the UI space: the shorter screen side spans virtualShort UI units. */
-    public void resize(int pixelW, int pixelH, float virtualShort) {
+    /**
+     * Sets up the UI space: the shorter screen side spans virtualShort UI units, but the width never
+     * drops below minWidth units (near-square and portrait windows get extra height instead).
+     */
+    public void resize(int pixelW, int pixelH, float virtualShort, float minWidth) {
         this.pixelW = pixelW;
         this.pixelH = pixelH;
-        scale = Math.min(pixelW, pixelH) / virtualShort;
+        scale = Math.min(Math.min(pixelW, pixelH) / virtualShort, pixelW / minWidth);
         width = pixelW / scale;
         height = pixelH / scale;
     }

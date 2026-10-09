@@ -70,7 +70,7 @@ public final class DesktopLauncher implements Platform {
         game.onSurfaceChanged(w, h);
 
         float dt = 1f / 60f;
-        float scale = Math.min(w, h) / 720f;
+        float scale = Math.min(Math.min(w, h) / Game.UI_SHORT, w / Game.UI_MIN_W);
         for (String raw : script.split(";")) {
             String[] t = raw.trim().split("\\s+");
             if (t.length == 0 || t[0].isEmpty()) continue;

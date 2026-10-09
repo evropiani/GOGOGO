@@ -117,6 +117,7 @@ public final class Art {
 
     /** Puts the hood camera over the middle of the car, just above its roof, so the hood shows below. */
     private static void placeHoodCamera(CarDef d, Mesh body) {
+        if (d.hoodFixed) return;
         float top = 0f;
         float[] v = body.vertices;
         for (int k = 0; k < v.length; k += Mesh.VERTEX_FLOATS) {

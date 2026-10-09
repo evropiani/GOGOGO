@@ -58,7 +58,7 @@ public final class Cars {
                     m.pop();
                     eyes(m, 0.36f, 1.64f, 1.18f, 0.17f);
                 }
-            }.wheels(0.48f, 0.4f, 0.86f, 0.95f, -0.85f).topper(1.58f, 0.86f),
+            }.wheels(0.48f, 0.4f, 0.86f, 0.95f, -0.85f).topper(1.58f, 0.86f).hood(2.1f, 0.55f),
 
             new CarDef(3, "HOT DOG", "Grips like mustard on a shirt.", 1300, 3f, 4.5f, 3f, 2f, 6, 1) {
                 public void build(MeshBuilder m) {
@@ -89,7 +89,7 @@ public final class Cars {
                     m.fixed(0xFF2244).sphere(0, 3.3f, -0.35f, 0.15f, 10);
                     eyes(m, 0.34f, 1.68f, 1.2f, 0.16f);
                 }
-            }.wheels(0.42f, 0.36f, 0.82f, 0.95f, -0.9f).topper(1.78f, 0.78f),
+            }.wheels(0.42f, 0.36f, 0.82f, 0.95f, -0.9f).topper(1.78f, 0.78f).hood(2.1f, 0.6f),
 
             new CarDef(5, "MONSTER CUBE", "Big wheels. Bigger attitude.", 2500, 3f, 2.5f, 3f, 4.5f, 3, 9) {
                 public void build(MeshBuilder m) {

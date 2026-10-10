@@ -11,6 +11,11 @@ public final class Save {
     private final Platform platform;
     private boolean dirty;
 
+    /** Version the player last saw the what's-new screen for (empty for profiles from before 1.3.0). */
+    public String lastVersion = "";
+    /** True if a saved profile was found at load (false on a fresh install). */
+    public boolean existed;
+
     public int coins = 150;
     /** Premium currency. */
     public int rims;
@@ -142,6 +147,7 @@ public final class Save {
     public void load() {
         String s = platform.load(KEY);
         if (s == null) return;
+        existed = true;
         Properties p = new Properties();
         try {
             p.load(new java.io.StringReader(s));
@@ -149,6 +155,8 @@ public final class Save {
             return;
         }
         coins = geti(p, "coins", coins);
+        String ver = p.getProperty("ver");
+        lastVersion = ver == null ? "" : ver.trim();
         rims = Math.max(0, geti(p, "rims", 0));
         selectedCar = geti(p, "car", 0);
         for (int i = 0; i < Cars.ALL.length; i++) {
@@ -219,6 +227,7 @@ public final class Save {
         if (!dirty) return;
         StringBuilder sb = new StringBuilder();
         put(sb, "coins", coins);
+        sb.append("ver=").append(lastVersion).append('\n');
         put(sb, "rims", rims);
         put(sb, "xp", xp);
         put(sb, "lvr", rewardedLevel);

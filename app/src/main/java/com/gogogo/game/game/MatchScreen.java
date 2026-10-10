@@ -8,7 +8,9 @@ import com.gogogo.game.engine.UIBatch;
 /** The actual game (landscape): HUD, steering/pedal buttons, camera modes, spectating, pause. */
 public final class MatchScreen extends Screen {
     private static final int OWNER_CTRL = 2;
-    private static final int C_LEFT = 0, C_RIGHT = 1, C_BRAKE = 2, C_GAS = 3, C_BOOST = 4;
+    private static final int C_LEFT = 0, C_RIGHT = 1, C_BRAKE = 2, C_GAS = 3, C_BOOST = 4, C_POWER = 5, CONTROLS = 6;
+    /** Radius of the power-up button (above BRAKE). */
+    private static final float POWER_R = 58f;
     public static final String[] CAM_NAME = {"NEAR", "FAR", "HOOD"};
 
     private final Match match;
@@ -18,9 +20,9 @@ public final class MatchScreen extends Screen {
     private boolean paused;
     private boolean camMenu;
     private float menuX, menuY, menuTop, camBtnX; // camera menu panel area and the button column
-    private final boolean[] held = new boolean[5];
-    private final float[] press = new float[5];
-    private final float[] cx = new float[5], cy = new float[5];
+    private final boolean[] held = new boolean[CONTROLS];
+    private final float[] press = new float[CONTROLS];
+    private final float[] cx = new float[CONTROLS], cy = new float[CONTROLS];
 
     // camera state
     private boolean camInit;
@@ -47,6 +49,9 @@ public final class MatchScreen extends Screen {
     private boolean resultsShown;
     private float hintT;
     private boolean usedGas;
+    private float powerPop;    // power button bounce after a pickup
+    private float powerHintT;  // "TAP!" over the power button (first matches)
+    private int devPower;      // next power-up the developer button hands out
 
     private static final String[] SAFE_WORDS = {"SAFE!", "PHEW!", "NICE!", "CLUTCH!", "COZY!"};
     /** Start light colors: red, yellow, green. */
@@ -112,17 +117,16 @@ public final class MatchScreen extends Screen {
         Sfx s = game.sfx;
         switch (type) {
             case Match.EV_COUNT:
-                // start lights: red GO!, yellow GO!, green GO! with the announcer shouting along
+                // start lights: red GO!, yellow GO!, green GO! with a beep for each light
                 if (v == 3) {
                     announce("GO!", LIGHT_COLORS[0], 0.8f);
-                    s.play(Sfx.VOICE_GO1, 1f, 1f);
+                    s.play(Sfx.START_RED, 1f, 1f);
                 } else if (v == 2) {
                     announce("GO!", LIGHT_COLORS[1], 0.8f);
-                    s.play(Sfx.VOICE_GO2, 1f, 1f);
+                    s.play(Sfx.START_YELLOW, 1f, 1f);
                 } else {
                     announce("GO!", LIGHT_COLORS[2], 1.0f);
-                    s.play(Sfx.VOICE_GO3, 1f, 1f);
-                    s.play(Sfx.GO, 0.5f, 1f);
+                    s.play(Sfx.START_GO, 1f, 1f);
                     game.vibrate(30);
                 }
                 break;
@@ -140,7 +144,7 @@ public final class MatchScreen extends Screen {
             case Match.EV_DROP: {
                 announce("DROP!", 0xFFFF4FA3, 0.7f);
                 Car p = match.player;
-                if (p != null && p.alive) {
+                if (p != null && p.alive && !p.airborne) {
                     Arena.Tile t = match.arena.cellAt(p.x, p.z);
                     if (t != null && t.color == match.target) {
                         view.pop(SAFE_WORDS[(int) (Math.random() * SAFE_WORDS.length)], p.x, 3.4f, p.z, 0xFF5EE65A);
@@ -175,6 +179,15 @@ public final class MatchScreen extends Screen {
             case Match.EV_DUCK_GET:
                 duckFlash = 1f;
                 break;
+            case Match.EV_PICKUP:
+                if (a == match.player) {
+                    powerPop = 1f;
+                    if (game.save.matches < 5) powerHintT = 2.5f;
+                }
+                break;
+            case Match.EV_POWER:
+                if (a == match.player) powerHintT = 0f;
+                break;
             default:
                 break;
         }
@@ -187,7 +200,7 @@ public final class MatchScreen extends Screen {
         return p != null && p.alive && !paused && match.phase != Match.OVER && !skipping;
     }
 
-    /** Lays out the five control centers for the current screen size and handedness. */
+    /** Lays out the control centers for the current screen size and handedness. */
     private void layoutControls() {
         UIBatch b = game.b;
         float W = b.width, H = b.height;
@@ -207,8 +220,11 @@ public final class MatchScreen extends Screen {
         cy[C_BRAKE] = bottom - 105;
         cx[C_BOOST] = W - right - 100;
         cy[C_BOOST] = bottom - 350;
+        // power-ups: right above BRAKE
+        cx[C_POWER] = cx[C_BRAKE];
+        cy[C_POWER] = cy[C_BRAKE] - 75 - 22 - POWER_R;
         if (game.save.leftHanded) {
-            for (int i = 0; i < 5; i++) cx[i] = W - cx[i];
+            for (int i = 0; i < CONTROLS; i++) cx[i] = W - cx[i];
             // keep left/right arrows in screen order
             float t = cx[C_LEFT];
             cx[C_LEFT] = cx[C_RIGHT];
@@ -220,10 +236,11 @@ public final class MatchScreen extends Screen {
     private int controlAt(float x, float y) {
         int best = -1;
         float bd = 150f * 150f;
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < CONTROLS; i++) {
+            if (i == C_POWER && !powerShown()) continue;
             float dx = x - cx[i], dy = y - cy[i];
             float d = dx * dx + dy * dy;
-            if (i == C_BOOST) d *= 1.4f; // boost is a smaller target than the pedals
+            if (i == C_BOOST || i == C_POWER) d *= 1.4f; // smaller targets than the pedals
             if (d < bd) {
                 bd = d;
                 best = i;
@@ -252,12 +269,16 @@ public final class MatchScreen extends Screen {
                 p.wantBoost = true;
                 game.vibrate(15);
             }
+            if (c == C_POWER && ptr.justDown && p.power >= 0 && p.frozenT <= 0) {
+                p.wantPower = true;
+                game.vibrate(15);
+            }
         }
     }
 
     private void handleControls(float dt) {
         Car p = match.player;
-        for (int i = 0; i < 5; i++) held[i] = false;
+        for (int i = 0; i < CONTROLS; i++) held[i] = false;
         if (controlsActive()) {
             for (Input.Pointer ptr : game.input.pointers) {
                 if (ptr.owner != OWNER_CTRL || !ptr.down) continue;
@@ -265,7 +286,7 @@ public final class MatchScreen extends Screen {
                 if (c >= 0) held[c] = true;
             }
         }
-        for (int i = 0; i < 5; i++) press[i] = Ease.approach(press[i], held[i] ? 1f : 0f, 25f, dt);
+        for (int i = 0; i < CONTROLS; i++) press[i] = Ease.approach(press[i], held[i] ? 1f : 0f, 25f, dt);
         if (p == null) return;
         p.steer = (held[C_RIGHT] ? 1f : 0f) - (held[C_LEFT] ? 1f : 0f);
         p.throttle = held[C_BRAKE] ? -1f : (held[C_GAS] ? 1f : 0f);
@@ -294,6 +315,8 @@ public final class MatchScreen extends Screen {
         if (subT > 0) subT -= dt;
         if (bannerPop > 0) bannerPop = Math.max(0f, bannerPop - dt * 3f);
         if (duckFlash > 0) duckFlash = Math.max(0f, duckFlash - dt * 0.6f);
+        if (powerPop > 0) powerPop = Math.max(0f, powerPop - dt * 3f);
+        if (powerHintT > 0) powerHintT -= dt;
         if (deadT >= 0) deadT += dt;
         if (overT >= 0) overT += dt;
 
@@ -344,6 +367,7 @@ public final class MatchScreen extends Screen {
         float fov;
         float wex, wey, wez, wtx, wty, wtz;
         view.hoodCar = null;
+        view.camCar = t;
         game.cam.near = 0.5f;
         if (t == null) {
             wex = 0; wey = 60; wez = 50; wtx = 0; wty = 0; wtz = 0;
@@ -365,7 +389,10 @@ public final class MatchScreen extends Screen {
             }
             float fx = (float) Math.sin(camYaw), fz = (float) Math.cos(camYaw);
             float baseY = t.falling ? Math.max(-30f, t.y * 0.6f) : 0f;
-            if (t.falling) mode = 1;
+            // high up in a super jump: rise with the car and look down at where it is going to land
+            float air = t.airborne ? Math.max(0f, t.y) : 0f;
+            // a fall pulls the camera back (not yet while a super jump can still save the car)
+            if (t.falling && !t.alive) mode = 1;
             boolean drop = match.phase == Match.DROP && match.phaseT < 1.6f;
             if (mode == 2) {
                 CarDef d = t.def;
@@ -374,7 +401,7 @@ public final class MatchScreen extends Screen {
                 wey = t.y + t.hop + d.hoodY * (1f + Math.max(0f, Math.min(0.35f, t.squash))); // follow the body stretch
                 wtx = wex + fx * 12f;
                 wtz = wez + fz * 12f;
-                wty = wey - 2.3f;
+                wty = wey - 2.3f - Math.min(4f, air * 0.5f);
                 fov = 70f;
                 game.cam.near = 0.2f;
                 // keep the player's marker during the bird's-eye part of the intro
@@ -383,19 +410,19 @@ public final class MatchScreen extends Screen {
                 float back = 8.5f + (drop ? 2f : 0f), up = 4.4f + (drop ? 1.5f : 0f);
                 wex = t.x - fx * back;
                 wez = t.z - fz * back;
-                wey = baseY + up;
+                wey = baseY + up + air * 1.05f;
                 wtx = t.x + fx * 3f;
                 wtz = t.z + fz * 3f;
-                wty = baseY + 1.0f;
+                wty = baseY + 1.0f + air * 0.45f;
                 fov = 62f;
             } else {
                 float back = 15f + (drop ? 4f : 0f), up = 12f + (drop ? 5f : 0f);
                 wex = t.x - fx * back;
                 wez = t.z - fz * back;
-                wey = baseY + up;
+                wey = baseY + up + air;
                 wtx = t.x + fx * 4f;
                 wtz = t.z + fz * 4f;
-                wty = baseY;
+                wty = baseY + air * 0.5f;
                 fov = 58f;
             }
             if (match.phase == Match.INTRO) {
@@ -441,6 +468,7 @@ public final class MatchScreen extends Screen {
         layoutControls();
 
         drawDanger(b, W, H);
+        drawFrost(b, W, H);
         view.drawPopups(b);
         if (view.hoodCar == null || view.hoodCar != match.player) drawNameTags(b);
 
@@ -568,6 +596,7 @@ public final class MatchScreen extends Screen {
         // pedals
         drawPedal(b, C_BRAKE, 140, 150, 0xFFFF4F6A, "BRAKE", 30f);
         drawPedal(b, C_GAS, 150, 220, 0xFF34D058, "GAS", 46f);
+        if (powerShown()) drawPowerButton(b, p);
         // boost
         float x = cx[C_BOOST], y = cy[C_BOOST], r = 68f;
         boolean ok = p.boostCd <= 0;
@@ -583,7 +612,132 @@ public final class MatchScreen extends Screen {
             b.shape(x, y + pr, rr * 2 - 12, rr * 2 - 12, rr - 6, 0xFFFF7CC0, 0, 0, 0, 0, 0);
             b.unclip();
         }
-        b.text(b.title, "BOOST", x, y + pr + 3, 32f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 4f);
+        b.text(b.title, "BUMP", x, y + pr + 3, 32f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 4f);
+    }
+
+    private static final String[] DIGITS = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"};
+    private static final String[] DEV_POWER = {"+SNOWBALL", "+ICE", "+JUMP", "+STICKY", "+S.BUMP"};
+
+    /** The power button waits until the first-match hint over the controls has gone. */
+    private boolean powerShown() {
+        return !(match.phase == Match.INTRO && game.save.matches < 3);
+    }
+
+    /** Round power-up button above BRAKE: the held item's icon and name, or a dim empty slot. */
+    private void drawPowerButton(UIBatch b, Car p) {
+        float x = cx[C_POWER], y = cy[C_POWER], r = POWER_R;
+        float pr = press[C_POWER] * 8f;
+        int type = p.power;
+        if (type < 0) {
+            // empty: a dim slot (sticky wheels that are running drain around it)
+            b.circle(x, y + 8, r, 0x40200040);
+            b.shape(x, y, r * 2, r * 2, r, 0x70302A48, 0x70FFFFFF, 4f, 0, 0, 0);
+            if (p.stickyT > 0) {
+                float k = p.stickyT / PowerUps.STICKY_TIME;
+                float fh = (r * 2 - 12) * k;
+                b.clip(x - r, y + r - 6 - fh, r * 2, fh);
+                b.shape(x, y, r * 2 - 12, r * 2 - 12, r - 6, UIBatch.withAlpha(0xFF000000 | CarRenderer.STICKY_GOO, 0.55f), 0, 0, 0, 0, 0);
+                b.unclip();
+                drawPowerIcon(b, PowerUps.STICKY, x, y - r * 0.16f, r * 0.36f);
+                b.text(b.title, DIGITS[Math.min(9, (int) Math.ceil(p.stickyT))], x, y + r * 0.5f, 24f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 4f);
+            } else {
+                b.text(b.title, "POWER", x, y + 2, 24f, 0x90FFFFFF, UIBatch.CENTER, 0, 0);
+            }
+            return;
+        }
+        int col = 0xFF000000 | PowerUps.COLOR[type];
+        boolean frozen = p.frozenT > 0;
+        boolean rescue = type == PowerUps.JUMP && p.falling; // jump out of the fall, now!
+        float pop = powerPop;
+        float rr = r * (1f + 0.04f * (float) Math.sin(game.time * 6f) + pop * 0.22f + (rescue ? 0.14f * Math.abs((float) Math.sin(game.time * 22f)) : 0f));
+        if (rescue) b.shape(x, y + pr, rr * 2.9f, rr * 2.9f, rr * 1.45f, UIBatch.withAlpha(col, 0.55f), 0, 0, 0, 26f, 0);
+        b.shadow(x - rr, y - rr + 12, rr * 2, rr * 2, rr, 0x50200040, 10);
+        b.circle(x, y + 10, rr, UI.shade(col, 0.6f));
+        b.shape(x, y + pr, rr * 2, rr * 2, rr, frozen ? 0xFF9AB4C8 : col, 0xFFFFFFFF, 6f, 0.5f, 0, 0);
+        drawPowerIcon(b, type, x, y + pr - rr * 0.17f, rr * 0.4f);
+        b.textFit(b.title, rescue ? "JUMP!" : PowerUps.SHORT[type], x, y + pr + rr * 0.52f, 24f, rr * 1.55f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 4f);
+        if (frozen) {
+            // iced over until the car thaws
+            b.shape(x, y + pr, rr * 2 - 8, rr * 2 - 8, rr - 4, 0x60DFF6FF, 0, 0, 0, 0, 0);
+            b.line(x - rr * 0.5f, y + pr - rr * 0.2f, x - rr * 0.1f, y + pr + rr * 0.15f, 4f, 0xC0FFFFFF);
+            b.line(x - rr * 0.1f, y + pr + rr * 0.15f, x + rr * 0.45f, y + pr - rr * 0.3f, 4f, 0xC0FFFFFF);
+        }
+        if (powerHintT > 0 && !frozen) {
+            float a = Math.min(1f, powerHintT * 3f) * (0.65f + 0.35f * (float) Math.sin(game.time * 9f));
+            b.alpha(a);
+            b.textShadow(b.title, "TAP!", x, y - rr - 26, 34f, 0xFFFFE14D, UIBatch.CENTER, 0xFF2A1840, 5f, 4f, 0x60200040);
+            b.alpha(1f);
+        }
+    }
+
+    /** Flat icon of a power-up (s = about its radius), for buttons and lists. */
+    static void drawPowerIcon(UIBatch b, int type, float cx, float cy, float s) {
+        int ink = 0xFF2A1840;
+        switch (type) {
+            case PowerUps.SNOWBALL:
+                b.circle(cx, cy, s * 1.08f, ink);
+                b.circle(cx, cy, s, 0xFFFFFFFF);
+                b.shape(cx + s * 0.18f, cy + s * 0.32f, s * 1.5f, s * 1.1f, s * 0.55f, 0xFFD2E6FA, 0, 0, 0, 0, 0);
+                b.circle(cx, cy - s * 0.12f, s * 0.78f, 0xFFFFFFFF);
+                b.circle(cx - s * 0.36f, cy - s * 0.38f, s * 0.2f, 0xFFE4F0FC);
+                b.circle(cx + s * 0.34f, cy + s * 0.1f, s * 0.16f, 0xFFE4F0FC);
+                break;
+            case PowerUps.ICE:
+                b.shape(cx, cy, s * 1.75f, s * 1.75f, s * 0.36f, 0xFF9CE4FF, ink, s * 0.12f, 0.35f, 0, 0.26f);
+                b.shape(cx - s * 0.1f, cy - s * 0.1f, s * 1.05f, s * 1.05f, s * 0.22f, 0xFFDDF8FF, 0, 0, 0, 0, 0.26f);
+                b.line(cx - s * 0.42f, cy - s * 0.05f, cx - s * 0.12f, cy - s * 0.42f, s * 0.14f, 0xFFFFFFFF);
+                break;
+            case PowerUps.JUMP:
+                // up arrow over a spring
+                for (int i = 0; i < 2; i++) {
+                    float w = i == 0 ? s * 0.56f : s * 0.36f;
+                    int c = i == 0 ? ink : 0xFFFFFFFF;
+                    b.line(cx, cy - s * 0.95f, cx - s * 0.7f, cy - s * 0.25f, w, c);
+                    b.line(cx, cy - s * 0.95f, cx + s * 0.7f, cy - s * 0.25f, w, c);
+                    b.line(cx, cy - s * 0.8f, cx, cy + s * 0.25f, w, c);
+                }
+                for (int i = 0; i < 2; i++) {
+                    float w = i == 0 ? s * 0.34f : s * 0.16f;
+                    int c = i == 0 ? ink : 0xFFE4E8F0;
+                    b.line(cx - s * 0.45f, cy + s * 0.5f, cx + s * 0.45f, cy + s * 0.68f, w, c);
+                    b.line(cx + s * 0.45f, cy + s * 0.68f, cx - s * 0.45f, cy + s * 0.86f, w, c);
+                }
+                break;
+            case PowerUps.STICKY:
+                // a drop of goo
+                for (int i = 0; i < 2; i++) {
+                    float o = i == 0 ? s * 0.12f : 0f;
+                    int c = i == 0 ? ink : 0xFFF0B8FF;
+                    b.shape(cx, cy - s * 0.18f, s * 1.05f + o * 1.6f, s * 1.05f + o * 1.6f, s * 0.12f, c, 0, 0, 0, 0, (float) Math.PI / 4);
+                    b.circle(cx, cy + s * 0.3f, s * 0.74f + o, c);
+                }
+                b.circle(cx - s * 0.26f, cy + s * 0.2f, s * 0.16f, 0xFFFFFFFF);
+                break;
+            default:
+                // super bump: a burst
+                for (int i = 0; i < 2; i++) {
+                    float o = i == 0 ? s * 0.12f : 0f;
+                    int c = i == 0 ? ink : 0xFFFFE14D;
+                    for (int k = 0; k < 4; k++) {
+                        b.shape(cx, cy, s * 2.05f + o * 2f, s * 0.46f + o * 2f, s * 0.23f + o, c, 0, 0, 0, 0, (float) (k * Math.PI / 4));
+                    }
+                }
+                b.circle(cx, cy, s * 0.42f, 0xFFFFFFFF);
+                break;
+        }
+    }
+
+    /** Frosty screen edges while the player is frozen. */
+    private void drawFrost(UIBatch b, float W, float H) {
+        Car p = match.player;
+        if (p == null || !p.alive || p.frozenT <= 0) return;
+        float k = Math.min(1f, p.frozenT * 3f) * Math.min(1f, (PowerUps.FREEZE_TIME - p.frozenT) * 6f);
+        int c = UIBatch.withAlpha(0xFFDDF6FF, 0.7f * k);
+        float e = 40f;
+        b.shape(W / 2, -e / 2, W + 200, e * 3, 0, c, 0, 0, 0, 50f, 0);
+        b.shape(W / 2, H + e / 2, W + 200, e * 3, 0, c, 0, 0, 0, 50f, 0);
+        b.shape(-e / 2, H / 2, e * 3, H + 200, 0, c, 0, 0, 0, 50f, 0);
+        b.shape(W + e / 2, H / 2, e * 3, H + 200, 0, c, 0, 0, 0, 50f, 0);
     }
 
     private void drawPedal(UIBatch b, int c, float w, float h, int color, String label, float size) {
@@ -600,7 +754,7 @@ public final class MatchScreen extends Screen {
     /** Red pulsing edges when the timer is running out and you're on the wrong color. */
     private void drawDanger(UIBatch b, float W, float H) {
         Car p = match.player;
-        if (p == null || !p.alive || match.phase != Match.SHOW || match.timer > 1.6f) return;
+        if (p == null || !p.alive || p.airborne || match.phase != Match.SHOW || match.timer > 1.6f) return;
         Arena.Tile t = match.arena.cellAt(p.x, p.z);
         if (t != null && t.color == match.target && t.state == Arena.PRESENT) return;
         float pulse = 0.55f + 0.45f * (float) Math.sin(game.time * 18f);
@@ -800,7 +954,7 @@ public final class MatchScreen extends Screen {
             finish(true);
         }
         if (dev) {
-            float y = py + 290, bw = 160, gap = (pw - 80 - 4 * bw) / 3f;
+            float y = py + 290, bw = 128, gap = (pw - 80 - 5 * bw) / 4f;
             if (ui.button("cw", px + 40, y, bw, 100, 0xFFFFC21F, "WIN NOW", 30f)) {
                 paused = false;
                 Cheats.instantWin(match);
@@ -816,6 +970,16 @@ public final class MatchScreen extends Screen {
             boolean god = match.player != null && match.player.god;
             if (ui.button("cg", px + 40 + 3 * (bw + gap), y, bw, 100, god ? 0xFF34D058 : 0xFFFFC21F, "GOD", 30f)) {
                 if (match.player != null) match.player.god = !match.player.god;
+            }
+            if (ui.button("cp", px + 40 + 4 * (bw + gap), y, bw, 100, 0xFFFFC21F, DEV_POWER[devPower], 26f)) {
+                // hand the player the next power-up (cycles through all of them)
+                Car pl = match.player;
+                if (pl != null && pl.alive) {
+                    pl.power = devPower;
+                    powerPop = 1f;
+                }
+                devPower = (devPower + 1) % PowerUps.COUNT;
+                paused = false;
             }
         }
     }

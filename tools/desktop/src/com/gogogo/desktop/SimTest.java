@@ -4,10 +4,12 @@ import com.gogogo.game.game.Arena;
 import com.gogogo.game.game.Car;
 import com.gogogo.game.game.Maps;
 import com.gogogo.game.game.Match;
+import com.gogogo.game.game.PowerUps;
 
 /**
  * Headless balance check: runs bot-only matches (100 bots) and prints round/elimination stats per map.
- * Usage: SimTest [RUNS] [MAP|all] [v]   (MAP is a map id or name, default CLASSIC; "v" prints every match)
+ * Usage: SimTest [RUNS] [MAP|all] [v] [nopow]   (MAP is a map id or name, default CLASSIC; "v" prints every match,
+ * "nopow" plays without power-ups)
  */
 public final class SimTest {
     // elimination causes
@@ -16,7 +18,11 @@ public final class SimTest {
     public static void main(String[] args) {
         int runs = args.length > 0 ? Integer.parseInt(args[0]) : 10;
         String which = args.length > 1 ? args[1] : "0";
-        boolean verbose = args.length > 2 && args[2].startsWith("v");
+        boolean verbose = false, noPow = false;
+        for (int i = 2; i < args.length; i++) {
+            if (args[i].startsWith("v")) verbose = true;
+            if (args[i].equalsIgnoreCase("nopow")) noPow = true;
+        }
         int from = 0, to = Maps.COUNT - 1;
         if (!which.equalsIgnoreCase("all")) {
             from = to = mapId(which);
@@ -25,17 +31,23 @@ public final class SimTest {
         StringBuilder table = new StringBuilder();
         table.append(String.format("%-13s %5s %11s %6s %5s  %6s %6s %6s %6s %6s  %9s  %s%n",
                 "map", "tiles", "rounds", "time", "ties", "miss", "shoved", "edge", "hole", "other", "falls/m", "rounds vs CLASSIC"));
+        StringBuilder pow = new StringBuilder();
+        pow.append(String.format("%-13s %9s %9s %9s %9s %9s %9s %9s%n", "power-ups", "spawned/m", "picked/m", "used/m", "elims/m", "rescues/m", "hits/m", "used: snow ice jump sticky bump"));
         for (int map = from; map <= to; map++) {
             double totalRounds = 0, totalRounds2 = 0, totalTime = 0;
             int ties = 0;
             int[] cause = new int[CAUSES];
             int showVoid = 0, elims = 0;
             int tiles = 0;
+            int spawned = 0, picked = 0, used = 0, rescues = 0;
+            final int[] powElims = new int[1], hits = new int[1];
+            final int[] byType = new int[PowerUps.COUNT];
             for (int r = 0; r < runs; r++) {
                 Match.Options o = new Match.Options();
                 o.attract = true;
                 o.bots = 100;
                 o.map = map;
+                o.noPowerUps = noPow;
                 final Match m = new Match(1234 + r * 77, o, null);
                 tiles = m.arena.count;
                 final boolean[] outside = outsideCells(m.arena);
@@ -44,6 +56,8 @@ public final class SimTest {
                 final int[] sv = new int[1];
                 m.listener = new Match.Listener() {
                     public void event(int type, Car a, Car b, float v) {
+                        if (type == Match.EV_POWER) byType[(int) v]++;
+                        if ((type == Match.EV_SPLAT && b != null) || type == Match.EV_FREEZE || type == Match.EV_SHOCK) hits[0]++;
                         if (type == Match.EV_DROP) {
                             for (Car c : m.cars) {
                                 Arena.Tile t = m.arena.cellAt(c.x, c.z);
@@ -52,6 +66,7 @@ public final class SimTest {
                             return;
                         }
                         if (type != Match.EV_ELIM) return;
+                        if (a.lastHitPower >= 0 && a.lastHitBy >= 0 && m.time - a.lastHitTime < 2.2f) powElims[0]++;
                         Arena.Tile t = m.arena.cellAt(a.x, a.z);
                         int k;
                         if (t == null || (!t.exists && outside[t.index])) k = EDGE;
@@ -73,6 +88,12 @@ public final class SimTest {
                         sb.append(m.alive).append(' ');
                         lastRound = m.round;
                     }
+                }
+                spawned += m.power.spawned;
+                used += m.power.used;
+                for (Car c : m.cars) {
+                    rescues += c.rescues;
+                    picked += c.pickups;
                 }
                 totalRounds += m.round;
                 totalRounds2 += m.round * m.round;
@@ -101,8 +122,13 @@ public final class SimTest {
                     pct(cause[MISS], elims), pct(cause[SHOVED], elims), pct(cause[EDGE], elims), pct(cause[HOLE], elims),
                     pct(cause[OTHER], elims), showVoid / (float) runs,
                     classic > 0 && map > 0 ? String.format("%+.0f%%", (avgRounds / classic - 1f) * 100f) : ""));
+            pow.append(String.format("%-13s %9.1f %9.1f %9.1f %9.1f %9.2f %9.1f    %d %d %d %d %d%n", Maps.NAME[map], spawned / (float) runs,
+                    picked / (float) runs,
+                    used / (float) runs, powElims[0] / (float) runs, rescues / (float) runs, hits[0] / (float) runs,
+                    byType[0], byType[1], byType[2], byType[3], byType[4]));
         }
         System.out.print(table);
+        if (!noPow) System.out.print(pow);
         System.out.println("causes (share of all eliminations): miss = not on the color at the drop, shoved = was safe at the drop");
         System.out.println("  but fell after it, edge = off the outside of the map, hole = into a hole inside the map, other = anything else");
         System.out.println("falls/m = cars per match that drove or got pushed off the floor while the color was showing");

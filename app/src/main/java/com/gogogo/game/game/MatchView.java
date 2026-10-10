@@ -16,6 +16,8 @@ public final class MatchView implements Match.Listener {
     public boolean quiet; // title-screen background: no sounds / shakes
     /** The car whose hood the camera sits on: drawn without topper and markers. */
     public Car hoodCar;
+    /** The car the camera follows (its held power-up icon sits lower, out of the line of sight). */
+    public Car camCar;
     /** Arena skin and sky (see Skins, Skies). */
     public int skin, sky;
     /** Pulls the sky decorations closer and shrinks them (small previews without a chase camera). */
@@ -49,6 +51,7 @@ public final class MatchView implements Match.Listener {
         match.listener = this;
         fx.clear();
         for (int i = 0; i < POPS; i++) popT[i] = 0;
+        for (int i = 0; i < WAVES; i++) waveT[i] = -1f;
     }
 
     public void pop(String text, float x, float y, float z, int color) {
@@ -74,6 +77,7 @@ public final class MatchView implements Match.Listener {
             }
         }
         if (skin == Skins.GOLDEN) sparkleTiles();
+        powerFx(dt);
     }
 
     /** GOLDEN GLORY: twinkles popping up on tiles around the camera. */
@@ -153,6 +157,16 @@ public final class MatchView implements Match.Listener {
             case Match.EV_TIE:
                 if (p != null) fx.confetti(p.x, 3f, p.z, 80, 1.2f);
                 break;
+            case Match.EV_PICKUP:
+            case Match.EV_POWER:
+            case Match.EV_SPLAT:
+            case Match.EV_FREEZE:
+            case Match.EV_THAW:
+            case Match.EV_LANDED:
+            case Match.EV_SHOCK:
+            case Match.EV_RESCUE:
+                powerEvent(type, a, b, v);
+                break;
             case Match.EV_DUCK_GET:
                 if (!quiet) {
                     s.play(Sfx.QUACK, 1f, 1f);
@@ -229,6 +243,7 @@ public final class MatchView implements Match.Listener {
             if (c.y < -85f) continue;
             drawCar(c, c == match.player && c.alive);
         }
+        drawPowerUps(r, art, a);
 
         fx.faceYaw = (float) Math.atan2(game.cam.ex - game.cam.tx, game.cam.ez - game.cam.tz);
         fx.draw(r, art);
@@ -241,24 +256,347 @@ public final class MatchView implements Match.Listener {
         CarRenderer.draw(r, art, c, time, base, m, c != hoodCar);
         if (c == hoodCar) marker = false;
 
-        // shadow on the floor
+        if (c.frozenT > 0) drawIce(r, art, c, c == hoodCar);
+        if (c.power >= 0 && c != hoodCar && !c.falling) drawHeld(r, art, c);
+
+        // shadow on the floor (in a super jump it stays, so you can see where you come down)
         Arena.Tile t = match.arena.cellAt(c.x, c.z);
-        if (t != null && t.state != Arena.GONE && !(t.state == Arena.SPAWNING && t.delay > 0)) {
+        boolean floor = t != null && t.state != Arena.GONE && !(t.state == Arena.SPAWNING && t.delay > 0);
+        if (floor) {
             float h = c.y + c.hop - t.y;
             if (h > -0.6f) {
-                float alpha = 0.45f * Math.max(0f, 1f - h / 6f);
-                r.blob(c.x, t.y + 0.04f, c.z, 1.35f, 1.35f, c.yaw, Math.min(0.45f, alpha));
+                float alpha = c.airborne ? 0.4f : 0.45f * Math.max(0f, 1f - h / 6f);
+                float rad = c.airborne ? 1.35f * Math.max(0.55f, 1f - h / 25f) : 1.35f;
+                r.blob(c.x, t.y + 0.04f, c.z, rad, 1.35f, c.yaw, Math.min(0.45f, alpha));
+            }
+        }
+        if (c.airborne && c.y > 1.5f) {
+            // a dotted line down to the floor under the car
+            float floorY = floor ? t.y : 0f;
+            float top = c.y - 0.2f;
+            int dots = Math.min(10, (int) ((top - floorY) / 1.3f) - 1);
+            for (int k = 1; k <= dots; k++) {
+                float dy = top - (k - 1) * 1.3f - (time * 3f) % 1.3f;
+                M4.trs(m, c.x, dy, c.z, 0, 0, 0, 0.13f, 0.13f, 0.13f);
+                r.draw(art.ball, m, PowerUps.COLOR[PowerUps.JUMP], 0, 0.35f);
             }
         }
 
         if (marker) {
             M4.trs(m, c.x, c.y + d.topY + 2.6f + (float) Math.abs(Math.sin(time * 5f)) * 0.6f, c.z, time * 2.5f, 0, 0, 1.3f, 1.3f, 1.3f);
             r.draw(art.marker, m, 0xFFE14D, 0xFFE14D, 0.3f);
-            if (t != null && !c.falling) {
+            if (t != null && !c.falling && (!c.airborne || (floor && t.state != Arena.FALLING))) {
                 float pulse = 1.55f + (float) Math.sin(time * 6f) * 0.08f;
                 M4.trs(m, c.x, t.y + 0.12f, c.z, 0, 0, 0, pulse, 1f, pulse);
                 r.draw(art.ring, m, 0xFFE14D, 0xFFE14D, 0.5f);
             }
+        }
+    }
+
+    // ------------------------------------------------------------------ power-ups
+
+    // shockwave rings (super bump, super jump take-off and touchdown, freezing)
+    private static final int WAVES = 12;
+    private final float[] waveX = new float[WAVES], waveY = new float[WAVES], waveZ = new float[WAVES];
+    private final float[] waveT = new float[WAVES], waveDur = new float[WAVES], waveR = new float[WAVES];
+    private final int[] waveColor = new int[WAVES];
+    private int waveCursor;
+
+    private void wave(float x, float y, float z, float radius, float dur, int color) {
+        int i = waveCursor;
+        waveCursor = (waveCursor + 1) % WAVES;
+        waveX[i] = x;
+        waveY[i] = y;
+        waveZ[i] = z;
+        waveR[i] = radius;
+        waveDur[i] = dur;
+        waveT[i] = 0f;
+        waveColor[i] = color;
+    }
+
+    private void powerEvent(int type, Car a, Car b, float v) {
+        Sfx s = game.sfx;
+        Car p = match.player;
+        PowerUps pw = match.power;
+        switch (type) {
+            case Match.EV_PICKUP: {
+                int col = PowerUps.COLOR[(int) v];
+                for (int k = 0; k < 6; k++) {
+                    fx.sparkle(pw.evX + rnd(1.2f), pw.evY + rnd(0.6f), pw.evZ + rnd(1.2f), 0.5f, col);
+                }
+                fx.puff(pw.evX, pw.evY, pw.evZ, 5, 0xFFFFFF, 3f);
+                if (a == p && !quiet) {
+                    s.play(Sfx.PICKUP, 0.9f, 1f);
+                    game.vibrate(20);
+                    pop(PowerUps.GOT[(int) v], a.x, 3.6f, a.z, 0xFF000000 | col);
+                } else if (!quiet && isNear(a.x, a.z, 20f)) {
+                    s.play(Sfx.PICKUP, 0.3f, 1.1f);
+                }
+                break;
+            }
+            case Match.EV_POWER:
+                powerUsed(a, (int) v);
+                break;
+            case Match.EV_SPLAT: {
+                boolean ice = v == PowerUps.ICE;
+                boolean near = isNear(pw.evX, pw.evZ, 26f);
+                if (b == null) {
+                    // missed: a puff of snow, or the ice block shatters on the floor
+                    if (ice) iceBurst(pw.evX, pw.evY + 0.3f, pw.evZ, 10);
+                    else fx.puff(pw.evX, pw.evY, pw.evZ, 6, 0xF4FAFF, 2.5f);
+                    if (near && !quiet) s.play(ice ? Sfx.FREEZE : Sfx.SPLAT, 0.35f, ice ? 1.5f : 1.2f);
+                    break;
+                }
+                fx.puff(pw.evX, pw.evY, pw.evZ, 12, 0xF4FAFF, 5f);
+                for (int k = 0; k < 10; k++) {
+                    int i = fx.spawn(Particles.BALL, pw.evX, pw.evY, pw.evZ, rnd(7f), 3f + (float) Math.random() * 5f, rnd(7f),
+                            0.22f + (float) Math.random() * 0.2f, 0.6f + (float) Math.random() * 0.3f, 0xFFFFFF, 18f);
+                    fx.drag(i, 1.5f);
+                }
+                if (near && !quiet) s.play(Sfx.SPLAT, b == p || a == p ? 1f : 0.5f, 0.9f + (float) Math.random() * 0.2f);
+                if (b == p && !quiet) {
+                    pop("SPLAT!", b.x, 3.4f, b.z, 0xFFFFFFFF);
+                    game.shake(0.5f, 0.3f);
+                    game.vibrate(40);
+                } else if (a == p && !quiet) {
+                    pop("SPLAT!", b.x, 3.2f, b.z, 0xFFFFE14D);
+                }
+                break;
+            }
+            case Match.EV_FREEZE: {
+                iceBurst(b.x, b.y + 1f, b.z, 14);
+                wave(b.x, b.y + 0.1f, b.z, 2.6f, 0.4f, CarRenderer.ICE_TINT);
+                if (!quiet && isNear(b.x, b.z, 26f)) s.play(Sfx.FREEZE, b == p || a == p ? 1f : 0.5f, 1f);
+                if (b == p && !quiet) {
+                    pop("FROZEN!", b.x, 3.6f, b.z, 0xFF7FE2FF);
+                    game.shake(0.4f, 0.3f);
+                    game.vibrate(60);
+                } else if (a == p && !quiet) {
+                    pop("FROZEN!", b.x, 3.2f, b.z, 0xFF7FE2FF);
+                }
+                break;
+            }
+            case Match.EV_THAW:
+                iceBurst(a.x, a.y + 1f, a.z, 12);
+                if (!quiet && isNear(a.x, a.z, 20f)) s.play(Sfx.FREEZE, a == p ? 0.6f : 0.25f, 1.6f);
+                break;
+            case Match.EV_LANDED:
+                fx.puff(a.x, 0.3f, a.z, 8, 0xFFFFFF, 4f);
+                wave(a.x, a.y + 0.1f, a.z, 3.2f, 0.35f, 0xFFFFFF);
+                if (!quiet && isNear(a.x, a.z, 26f)) s.play(Sfx.THUD, a == p ? 1f : 0.45f, 0.9f + (float) Math.random() * 0.2f);
+                if (a == p && !quiet) {
+                    game.shake(Math.min(0.7f, v * 0.03f), 0.35f);
+                    game.vibrate(35);
+                }
+                break;
+            case Match.EV_SHOCK:
+                fx.stars(b.x, 1.6f, b.z, 3);
+                if (b == p && !quiet) {
+                    pop("WHOA!", b.x, 3.4f, b.z, 0xFFFFB03B);
+                    game.shake(0.6f, 0.35f);
+                    game.vibrate(50);
+                }
+                break;
+            case Match.EV_RESCUE:
+                if (a == p && !quiet) pop("SAVED!", a.x, 2.5f, a.z, 0xFF5EE65A);
+                break;
+            default:
+                break;
+        }
+    }
+
+    private void powerUsed(Car a, int type) {
+        Sfx s = game.sfx;
+        boolean me = a == match.player;
+        boolean near = isNear(a.x, a.z, 26f) && !quiet;
+        float vol = me ? 1f : 0.45f;
+        float fx0 = (float) Math.sin(a.yaw), fz0 = (float) Math.cos(a.yaw);
+        switch (type) {
+            case PowerUps.SNOWBALL:
+                fx.puff(a.x + fx0 * 1.6f, 1.3f, a.z + fz0 * 1.6f, 4, 0xF4FAFF, 2f);
+                if (near) s.play(Sfx.THROW, vol, 1f + (float) Math.random() * 0.15f);
+                break;
+            case PowerUps.ICE:
+                for (int k = 0; k < 5; k++) fx.sparkle(a.x + fx0 * 1.6f + rnd(0.6f), 1.2f + rnd(0.4f), a.z + fz0 * 1.6f + rnd(0.6f), 0.45f, CarRenderer.ICE_TINT);
+                if (near) s.play(Sfx.THROW, vol, 0.8f);
+                break;
+            case PowerUps.JUMP:
+                fx.puff(a.x, 0.4f, a.z, 10, 0xFFFFFF, 5f);
+                wave(a.x, Math.max(0f, a.y) + 0.1f, a.z, 3.4f, 0.4f, PowerUps.COLOR[PowerUps.JUMP]);
+                if (near) s.play(Sfx.SPRING, vol, 1f);
+                if (me && !quiet) game.vibrate(30);
+                break;
+            case PowerUps.STICKY:
+                for (int k = 0; k < 10; k++) fx.sparkle(a.x + rnd(1.6f), 0.5f + (float) Math.random() * 0.8f, a.z + rnd(1.6f), 0.45f, CarRenderer.STICKY_GOO);
+                if (near) s.play(Sfx.GOO, vol, 1f);
+                if (me && !quiet) pop("STICKY!", a.x, 3.4f, a.z, 0xFFE09AFF);
+                break;
+            default: {
+                float rr = PowerUps.SHOCK_RADIUS;
+                wave(a.x, a.y + 0.2f, a.z, rr, 0.45f, PowerUps.COLOR[PowerUps.SUPER_BUMP]);
+                wave(a.x, a.y + 0.5f, a.z, rr * 0.75f, 0.32f, 0xFFFFFF);
+                fx.bonk(a.x, 2.6f, a.z, 1.3f);
+                fx.puff(a.x, 0.5f, a.z, 12, 0xFFD8A0, 7f);
+                if (!quiet && isNear(a.x, a.z, 30f)) {
+                    s.play(Sfx.BOOM, me ? 1f : 0.6f, 0.95f + (float) Math.random() * 0.1f);
+                    Car p = match.player;
+                    if (p != null && p.alive) {
+                        float dx = p.x - a.x, dz = p.z - a.z;
+                        if (dx * dx + dz * dz < 14f * 14f) game.shake(me ? 0.7f : 0.35f, 0.35f);
+                    }
+                }
+                if (me && !quiet) game.vibrate(60);
+                break;
+            }
+        }
+    }
+
+    private void iceBurst(float x, float y, float z, int count) {
+        for (int k = 0; k < count; k++) {
+            int i = fx.spawn(Particles.CUBE, x + rnd(0.8f), y + rnd(0.5f), z + rnd(0.8f), rnd(6f), 2f + (float) Math.random() * 5f, rnd(6f),
+                    0.16f + (float) Math.random() * 0.2f, 0.7f + (float) Math.random() * 0.4f, Math.random() < 0.5 ? 0xCFF6FF : 0x8FE0FF, 20f);
+            fx.glow(i, 0.25f);
+        }
+    }
+
+    private static float rnd(float r) {
+        return (float) (Math.random() * 2 - 1) * r;
+    }
+
+    /** Trails and twinkles of the power-ups in play (and goo dripping off sticky wheels). */
+    private void powerFx(float dt) {
+        PowerUps pw = match.power;
+        for (int i = 0; i < WAVES; i++) {
+            if (waveT[i] >= 0f) {
+                waveT[i] += dt;
+                if (waveT[i] > waveDur[i]) waveT[i] = -1f;
+            }
+        }
+        for (int i = 0; i < PowerUps.MAX_SHOTS; i++) {
+            if (!pw.shotOn[i] || Math.random() > 0.7) continue;
+            if (pw.shotType[i] == PowerUps.SNOWBALL) {
+                int k = fx.spawn(Particles.BALL, pw.shotX[i], pw.shotY[i], pw.shotZ[i], rnd(0.5f), rnd(0.5f), rnd(0.5f), 0.16f, 0.35f, 0xFFFFFF, 0f);
+                fx.drag(k, 3f);
+            } else {
+                fx.sparkle(pw.shotX[i] + rnd(0.3f), pw.shotY[i] + rnd(0.3f), pw.shotZ[i] + rnd(0.3f), 0.35f, CarRenderer.ICE_TINT);
+            }
+        }
+        if (Math.random() < dt * 6f) {
+            for (int i = 0; i < PowerUps.MAX_PICKUPS; i++) {
+                if (!pw.pickOn[i] || Math.random() > 0.35 || !isNear(pw.pickX[i], pw.pickZ[i], 40f)) continue;
+                Arena.Tile t = match.arena.tiles[pw.pickTile[i]];
+                fx.sparkle(pw.pickX[i] + rnd(1f), t.y + 1.5f + rnd(0.8f), pw.pickZ[i] + rnd(1f), 0.3f, PowerUps.COLOR[pw.pickType[i]]);
+            }
+        }
+        for (Car c : match.cars) {
+            if (c.falling || !c.alive) continue;
+            if (c.stickyT > 0 && Math.random() < dt * 5f && isNear(c.x, c.z, 30f)) {
+                float fx0 = (float) Math.sin(c.yaw), fz0 = (float) Math.cos(c.yaw);
+                float side = Math.random() < 0.5 ? -1f : 1f, along = Math.random() < 0.5 ? c.def.wheelZf : c.def.wheelZr;
+                float wx = c.x + fz0 * side * c.def.wheelX + fx0 * along, wz = c.z - fx0 * side * c.def.wheelX + fz0 * along;
+                if (Math.random() < 0.6) {
+                    int k = fx.spawn(Particles.BALL, wx, c.y + 0.25f, wz, 0, 0.5f, 0, 0.12f + (float) Math.random() * 0.08f, 0.6f, CarRenderer.STICKY_GOO, 6f);
+                    fx.drag(k, 2f);
+                } else {
+                    fx.sparkle(wx, c.y + 0.5f, wz, 0.3f, 0xF6D2FF);
+                }
+            }
+            if (c.airborne && c != hoodCar && Math.random() < 0.5 && isNear(c.x, c.z, 40f)) {
+                // a twinkly trail under and behind the car
+                float bx = c.x - (float) Math.sin(c.yaw) * 1.2f, bz = c.z - (float) Math.cos(c.yaw) * 1.2f;
+                fx.sparkle(bx + rnd(0.7f), c.y - 0.1f + rnd(0.3f), bz + rnd(0.7f), 0.35f, Math.random() < 0.5 ? 0xFFFFFF : PowerUps.COLOR[PowerUps.JUMP]);
+            }
+        }
+    }
+
+    /** Pickups lying on the map, snowballs and ice blocks in flight, shockwave rings. */
+    private void drawPowerUps(Renderer r, Art art, Arena a) {
+        PowerUps pw = match.power;
+        for (int i = 0; i < PowerUps.MAX_PICKUPS; i++) {
+            if (!pw.pickOn[i]) continue;
+            Arena.Tile t = a.tiles[pw.pickTile[i]];
+            float sc = Ease.outBack(Math.min(1f, pw.pickAge[i] / 0.4f));
+            if (sc < 0.02f) continue;
+            float ph = i * 1.7f;
+            float y = t.y + 1.8f + (float) Math.sin(time * 2.6f + ph) * 0.22f;
+            float spin = time * 1.6f + ph;
+            int type = pw.pickType[i];
+            float pulse = 0.25f + 0.15f * (float) Math.sin(time * 5f + ph);
+            float fs = sc * 1.2f, is = sc * 1.3f;
+            M4.trs(m, pw.pickX[i], y, pw.pickZ[i], spin, 0, 0, fs, fs, fs);
+            r.draw(art.pickupFrame, m, 0xFFFFFF, 0xFFFFFF, pulse);
+            M4.trs(m, pw.pickX[i], y, pw.pickZ[i], spin, 0, 0, is, is, is);
+            r.draw(art.powerIcon[type], m, 0xFFFFFF, 0xFFFFFF, 0.1f);
+            // a glowing ring on the floor in the power-up's color, and a soft shadow
+            float rp = (1.45f + 0.1f * (float) Math.sin(time * 4f + ph)) * sc;
+            M4.trs(m, pw.pickX[i], t.y + 0.1f, pw.pickZ[i], 0, t.rotX, t.rotZ, rp, 1f, rp);
+            r.draw(art.ring, m, PowerUps.COLOR[type], PowerUps.COLOR[type], 0.45f);
+            r.blob(pw.pickX[i], t.y + 0.05f, pw.pickZ[i], 0.8f * sc, 1f, 0, 0.3f);
+        }
+        for (int i = 0; i < PowerUps.MAX_SHOTS; i++) {
+            if (!pw.shotOn[i]) continue;
+            int type = pw.shotType[i];
+            float age = pw.shotAge[i];
+            float s = type == PowerUps.SNOWBALL ? 0.8f : 1.05f;
+            M4.trs(m, pw.shotX[i], pw.shotY[i], pw.shotZ[i], age * 9f, age * 7f, 0, s, s, s);
+            r.draw(art.powerIcon[type], m, 0xFFFFFF, 0xFFFFFF, type == PowerUps.ICE ? 0.2f : 0.1f);
+            Arena.Tile t = a.cellAt(pw.shotX[i], pw.shotZ[i]);
+            if (t != null && t.state == Arena.PRESENT && pw.shotY[i] > -0.5f) {
+                r.blob(pw.shotX[i], t.y + 0.05f, pw.shotZ[i], 0.55f, 1f, 0, 0.3f * Math.max(0f, 1f - pw.shotY[i] / 8f));
+            }
+        }
+        for (int i = 0; i < WAVES; i++) {
+            if (waveT[i] < 0f) continue;
+            float k = waveT[i] / waveDur[i];
+            float rad = 0.6f + (waveR[i] - 0.6f) * Ease.outCubic(k);
+            float th = 1f - k;
+            M4.trs(m, waveX[i], waveY[i], waveZ[i], 0, 0, 0, rad, 1f + th * 5f, rad);
+            r.draw(art.wave, m, waveColor[i], waveColor[i], 0.25f + 0.4f * th);
+        }
+    }
+
+    /** A small icon of the held power-up hovering low over the roof (out of the way of a camera behind the car). */
+    private void drawHeld(Renderer r, Art art, Car c) {
+        CarDef d = c.def;
+        float fx0 = (float) Math.sin(c.yaw), fz0 = (float) Math.cos(c.yaw);
+        float top = Math.max(d.topY + (c.topper > 0 ? 1f : 0.1f), art.carTop[d.id]);
+        boolean followed = c == camCar;
+        float y = c.y + c.hop + top + (followed ? 0.4f : 0.55f) + (float) Math.sin(time * 3.4f + c.index) * 0.08f;
+        float px = c.x - fx0 * 0.35f, pz = c.z - fz0 * 0.35f;
+        float s = followed ? 0.5f : 0.6f;
+        M4.trs(m, px, y, pz, time * 2.2f + c.index, 0, 0, s, s, s);
+        r.draw(art.powerIcon[c.power], m, 0xFFFFFF, 0xFFFFFF, 0.22f + 0.1f * (float) Math.sin(time * 6f + c.index));
+        // a little halo in the power-up's color
+        int col = PowerUps.COLOR[c.power];
+        M4.trs(m, px, y - s * 0.6f, pz, 0, 0, 0, s * 0.7f, 0.8f, s * 0.7f);
+        r.draw(art.ring, m, col, col, 0.45f);
+    }
+
+    // ice shell: crystals around a frozen car in car space: x across and z along (fractions of the car's size),
+    // height (fraction of its roof), size, lean outwards and lean forwards/backwards (radians)
+    private static final float[] SHARD_X = {-1.05f, -0.75f, 1.05f, 0.8f, -1.05f, -0.8f, 1.05f, 0.75f, -1.15f, 1.15f, -0.3f, 0.35f};
+    private static final float[] SHARD_Z = {1.0f, 1.15f, 1.0f, 1.15f, -1.0f, -1.15f, -1.0f, -1.15f, 0.05f, -0.1f, 0.15f, -0.35f};
+    private static final float[] SHARD_Y = {0.1f, 0.15f, 0.1f, 0.15f, 0.1f, 0.15f, 0.1f, 0.15f, 0.25f, 0.25f, 0.95f, 0.95f};
+    private static final float[] SHARD_S = {1.15f, 0.7f, 1.05f, 0.75f, 1.1f, 0.7f, 1.2f, 0.65f, 0.9f, 0.85f, 0.62f, 0.55f};
+    private static final float[] SHARD_OUT = {0.75f, 0.35f, 0.75f, 0.35f, 0.75f, 0.35f, 0.75f, 0.35f, 0.95f, 0.95f, 0.25f, 0.3f};
+    private static final float[] SHARD_FWD = {0.55f, 0.85f, 0.55f, 0.85f, 0.55f, 0.85f, 0.55f, 0.85f, 0f, 0f, 0.2f, 0.25f};
+
+    private void drawIce(Renderer r, Art art, Car c, boolean hood) {
+        CarDef d = c.def;
+        float grow = Ease.outBack(Math.min(1f, (PowerUps.FREEZE_TIME - c.frozenT) / 0.25f));
+        float shake = c.frozenT < 0.45f ? (float) Math.sin(time * 70f + c.index) * 0.05f : 0f;
+        float halfZ = Math.max(d.wheelZf, -d.wheelZr) + 0.2f;
+        for (int k = 0; k < SHARD_X.length; k++) {
+            if (hood && SHARD_Y[k] > 0.5f) continue; // roof crystals would sit in the hood camera
+            float sx = SHARD_X[k], sz = SHARD_Z[k];
+            float s = SHARD_S[k] * grow;
+            M4.copy(base, m);
+            M4.postTranslate(m, sx * (d.wheelX + 0.1f) + shake, SHARD_Y[k] * d.topY, sz * halfZ);
+            M4.postRotZ(m, -Math.signum(sx) * SHARD_OUT[k]);
+            M4.postRotX(m, Math.signum(sz) * SHARD_FWD[k]);
+            M4.postRotY(m, k * 0.9f);
+            M4.postScale(m, s, s * 1.15f, s);
+            r.draw(art.shard, m, k % 3 == 0 ? 0xE2F8FF : 0xA6E6FF, 0, 0.2f);
         }
     }
 

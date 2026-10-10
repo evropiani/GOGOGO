@@ -11,6 +11,14 @@ public final class Match {
     public static final int EV_COUNT = 0, EV_ROUND = 1, EV_DROP = 2, EV_LAND = 3, EV_ELIM = 4, EV_BUMP = 5,
             EV_BOOST = 6, EV_WIN = 7, EV_TIE = 8, EV_BONK = 9, EV_DUCK_SPAWN = 10, EV_DUCK_GET = 11, EV_TICK = 12,
             EV_LAST_ONE = 13;
+    /**
+     * Power-up events (see PowerUps; where it happened is in power.evX/evY/evZ): EV_PICKUP a grabbed value's type,
+     * EV_POWER a used value's type, EV_SPLAT a snowball (value = type: an ice block shatters) hit car b or the floor
+     * (b = null), EV_FREEZE an ice block from a froze b, EV_THAW a broke out of the ice, EV_LANDED a came down from a
+     * super jump (value = speed), EV_SHOCK a's super bump shoved b (value = push), EV_RESCUE a jumped out of a fall.
+     */
+    public static final int EV_PICKUP = 14, EV_POWER = 15, EV_SPLAT = 16, EV_FREEZE = 17, EV_THAW = 18, EV_LANDED = 19,
+            EV_SHOCK = 20, EV_RESCUE = 21;
 
     public interface Listener {
         void event(int type, Car a, Car b, float value);
@@ -25,6 +33,8 @@ public final class Match {
         public int size;
         public boolean god, freezeTimer, superSpeed, dumbBots, forceDuck, slowTimer, autopilot;
         public boolean attract; // title screen background (no player)
+        /** No power-ups on the map (previews). */
+        public boolean noPowerUps;
     }
 
     public static final float STEP = 1f / 60f;
@@ -36,6 +46,8 @@ public final class Match {
     public final Arena arena;
     public final Rng rng;
     public final Options opt;
+    /** Pickups on the map and power-ups in flight. */
+    public final PowerUps power;
     public Car[] cars;
     public Car player;
     public Listener listener;
@@ -71,6 +83,8 @@ public final class Match {
         this.opt = opt;
         int mapId = Math.max(0, Math.min(Maps.COUNT - 1, opt.map));
         arena = opt.size > 0 ? new Arena(opt.size, null) : new Arena(Maps.size(mapId), Maps.mask(mapId));
+        power = new PowerUps(this);
+        power.enabled = !opt.noPowerUps;
         int n = opt.attract ? Math.max(2, opt.bots) : opt.bots + 1;
         cars = new Car[n];
         total = n;
@@ -298,15 +312,21 @@ public final class Match {
         for (Car c : cars) {
             if (c.bot != null && c.alive) c.bot.think(this, c, dt);
         }
+        power.useRequested(canDrive);
         for (Car c : cars) {
             if (!c.alive && c.y < -80f) continue;
-            if (c.step(arena, dt, canDrive && c.alive)) justFell.add(c);
+            c.step(arena, dt, canDrive && c.alive);
+            // out once it loses its footing; holding a super jump buys a moment to jump out of the fall
+            if (c.alive && c.falling && (c.power != PowerUps.JUMP || c.fallT >= PowerUps.RESCUE_TIME || !canDrive)) justFell.add(c);
             if (c.justBoosted) {
                 c.boosts++;
                 emit(EV_BOOST, c, null, 0);
             }
+            if (c.justLanded) emit(EV_LANDED, c, null, c.landSpeed);
+            if (c.justThawed) emit(EV_THAW, c, null, 0);
         }
         collide(dt, true);
+        power.update(dt);
         arena.landed = 0;
         arena.update(dt);
         if (arena.landed > 0) emit(EV_LAND, null, null, arena.landed);
@@ -347,7 +367,8 @@ public final class Match {
                 phaseT = 0;
                 emit(EV_TIE, null, null, tieGroup.size());
             } else if (alive == 1) {
-                finishT += dt;
+                // (not while the last one is still trying to jump out of a fall)
+                if (!lastOneFalling()) finishT += dt;
                 if (finishT > 1.6f) {
                     for (Car c : cars) {
                         if (c.alive) {
@@ -365,6 +386,11 @@ public final class Match {
         }
     }
 
+    private boolean lastOneFalling() {
+        for (Car c : cars) if (c.alive && c.falling) return true;
+        return false;
+    }
+
     /** Reaching the target color with less than this many seconds left counts as a clutch save. */
     public static final float CLUTCH_TIME = 0.5f;
 
@@ -372,7 +398,7 @@ public final class Match {
         Car p = player;
         if (p == null || !p.alive || p.falling) return;
         Arena.Tile t = arena.cellAt(p.x, p.z);
-        boolean on = t != null && t.exists && t.color == target;
+        boolean on = t != null && t.exists && t.color == target && !p.airborne;
         if (on && !p.onTarget) p.safeAt = Math.max(0f, timer);
         p.onTarget = on;
     }
@@ -400,10 +426,10 @@ public final class Match {
         int n = cs.length;
         for (int i = 0; i < n; i++) {
             Car a = cs[i];
-            if (!a.alive || a.falling) continue;
+            if (!a.alive || a.falling || a.airborne) continue;
             for (int j = i + 1; j < n; j++) {
                 Car b = cs[j];
-                if (!b.alive || b.falling) continue;
+                if (!b.alive || b.falling || b.airborne) continue;
                 float dx = b.x - a.x, dz = b.z - a.z;
                 float rr = a.radius + b.radius;
                 float d2 = dx * dx + dz * dz;
@@ -439,8 +465,10 @@ public final class Match {
                     if (strength > 3f) {
                         a.lastHitBy = b.index;
                         a.lastHitTime = time;
+                        a.lastHitPower = -1;
                         b.lastHitBy = a.index;
                         b.lastHitTime = time;
+                        b.lastHitPower = -1;
                         float hop = Math.min(5f, strength * 0.25f);
                         if (a.hop <= 0) a.hopV = hop * ib / tot * 2f;
                         if (b.hop <= 0) b.hopV = hop * ia / tot * 2f;
@@ -457,7 +485,7 @@ public final class Match {
         }
     }
 
-    private void emit(int type, Car a, Car b, float v) {
+    void emit(int type, Car a, Car b, float v) {
         if (listener != null) listener.event(type, a, b, v);
     }
 

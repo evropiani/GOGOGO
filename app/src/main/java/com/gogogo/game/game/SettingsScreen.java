@@ -71,14 +71,16 @@ public final class SettingsScreen extends Screen {
         float rx = px + pw + 40, rw = W - right - rx;
         float bw = Math.min(460f, rw), bx = rx + (rw - bw) / 2;
         float by = py;
-        if (ui.button("code", bx, by, bw, 110, 0xFF8E62FF, "ENTER CODE", 50f)) {
+        if (ui.button("code", bx, by, bw, 104, 0xFF8E62FF, "ENTER CODE", 48f)) {
             codeOpen = true;
             code.setLength(0);
         }
-        by += 130;
+        by += 120;
+        if (ui.button("log", bx, by, bw, 104, 0xFF3BA8FF, "UPDATE LOG", 48f)) game.setScreen(new ChangelogScreen(game, true));
+        by += 120;
         if (s.dev) {
-            if (ui.button("dev", bx, by, bw, 110, 0xFFFFC21F, "CHEATS", 50f)) game.setScreen(new CheatScreen(game));
-            by += 130;
+            if (ui.button("dev", bx, by, bw, 104, 0xFFFFC21F, "CHEATS", 48f)) game.setScreen(new CheatScreen(game));
+            by += 120;
         }
         if (ui.button("reset", bx + bw / 2 - 170, by, 340, 88, 0xFFFF4FA3, "RESET PROGRESS", 32f)) confirmReset = true;
 

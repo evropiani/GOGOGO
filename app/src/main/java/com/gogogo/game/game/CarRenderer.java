@@ -12,16 +12,28 @@ public final class CarRenderer {
         draw(r, art, c, time, base, m, true);
     }
 
+    /**
+     * topper = false for the car the hood camera sits on: drawn without its topper, and level in a super jump
+     * (the camera doesn't pitch with the body, so the hood would swing through the view).
+     */
     public static void draw(Renderer r, Art art, Car c, float time, float[] base, float[] m, boolean topper) {
         CarDef d = c.def;
         int paint = Palette.paintColor(c.paint, time);
         int accent = Palette.paintColor(c.accent, time + 1.3f);
+        float glow = c.flash * 0.6f;
+        if (c.frozenT > 0) {
+            // frozen solid: icy tint and a cold shine
+            float k = Math.min(1f, c.frozenT * 4f) * 0.6f;
+            paint = Palette.mix(paint, ICE_TINT, k);
+            accent = Palette.mix(accent, ICE_TINT, k);
+            glow = Math.max(glow, 0.14f * k / 0.6f);
+        }
         float s = Math.max(-0.35f, Math.min(0.35f, c.squash));
         float sy = 1f + s, sxz = 1f - s * 0.5f;
         float bob = c.falling ? 0f : (float) Math.abs(Math.sin(time * 9f + c.index)) * Math.min(1f, c.speed() / 10f) * 0.06f;
-        float pitch = c.rotX - c.topZ * 0.15f, roll = c.rotZ + c.tilt;
+        float pitch = (topper || !c.airborne ? c.rotX : 0f) - c.topZ * 0.15f, roll = c.rotZ + c.tilt;
         M4.trs(base, c.x, c.y + c.hop + bob, c.z, c.yaw, pitch, roll, sxz, sy, sxz);
-        r.draw(art.cars[d.id], base, paint, accent, c.flash * 0.6f);
+        r.draw(art.cars[d.id], base, paint, accent, glow);
         if (d.id == Cars.DISCO || d.id == Cars.TITAN) drawBodyExtras(r, art, c, d, time, base, m);
 
         for (int w = 0; w < 4; w++) {
@@ -34,6 +46,12 @@ public final class CarRenderer {
             M4.postRotX(m, c.wheelSpin);
             M4.postScale(m, d.wheelW, d.wheelR, d.wheelR);
             r.draw(art.wheels[c.wheel], m, paint, accent, c.flash * 0.4f);
+            if (c.stickyT > 0) {
+                // sticky wheels: goo around the tire (wobbling, thinning out in the last second)
+                float g = Math.min(1f, c.stickyT) * (1f + 0.06f * (float) Math.sin(time * 9f + w));
+                M4.postScale(m, 1.05f, g, g);
+                r.draw(art.goo, m, STICKY_GOO, STICKY_GOO, 0.12f);
+            }
         }
 
         if (topper && c.topper > 0) {
@@ -67,6 +85,8 @@ public final class CarRenderer {
     }
 
     private static final float[] LAMP_M = new float[16];
+    /** Frozen cars are tinted towards this; sticky wheels get goo of this color. */
+    static final int ICE_TINT = 0xBDEBFF, STICKY_GOO = 0xC04CF0;
     /** Lamp colors: red, yellow, green, and their switched-off tints. */
     private static final int[] LAMP_ON = {0xFF2A1A, 0xFFCC00, 0x1EE048};
     private static final int[] LAMP_OFF = {0x5A1E28, 0x5A4A20, 0x1E4A2E};

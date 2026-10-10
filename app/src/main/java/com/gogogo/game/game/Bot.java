@@ -8,6 +8,7 @@ public final class Bot {
     public final float mistake;    // chance to go for a wrong color
     public final float aggression; // likes ramming people off islands
     public final float smarts;     // avoids crowds, plans boost
+    public final float wits;       // how well it uses power-ups
     public boolean dumb;           // dev option
 
     public Arena.Tile goal;
@@ -25,24 +26,130 @@ public final class Bot {
                 mistake = rng.range(0.07f, 0.14f);
                 aggression = rng.range(0f, 0.3f);
                 smarts = rng.range(0f, 0.3f);
+                wits = rng.range(0.15f, 0.45f);
+                jumpLead = rng.range(0.15f, 0.8f);
                 break;
             case 2: // pro
                 reaction = rng.range(0.16f, 0.32f);
                 mistake = rng.range(0.0f, 0.02f);
                 aggression = rng.range(0.4f, 1f);
                 smarts = rng.range(0.7f, 1f);
+                wits = rng.range(0.8f, 1f);
+                jumpLead = rng.range(0.1f, 0.3f);
                 break;
             default:
                 reaction = rng.range(0.3f, 0.6f);
                 mistake = rng.range(0.02f, 0.06f);
                 aggression = rng.range(0.1f, 0.7f);
                 smarts = rng.range(0.3f, 0.7f);
+                wits = rng.range(0.45f, 0.8f);
+                jumpLead = rng.range(0.1f, 0.45f);
                 break;
         }
         wobble = rng.range(0f, 100f);
     }
 
     public void think(Match m, Car c, float dt) {
+        if (c.falling) {
+            // only while a super jump can still get it out of the fall
+            c.inX = c.inZ = 0;
+            rescue(m, c);
+            return;
+        }
+        rescueAt = -1f;
+        drive(m, c, dt);
+        if (c.airborne) airSteer(m, c);
+        else if (c.power >= 0 && !dumb) usePower(m, c, dt);
+        else powerT = -1f;
+    }
+
+    // ------------------------------------------------------------------ power-ups
+
+    private final float jumpLead;   // seconds before the drop it jumps when stranded on a wrong color
+    private float powerT = -1f;     // countdown to using the held power-up (-1 = nothing in sight)
+    private float scanT;            // seconds until it looks around again
+    private boolean seen;           // something worth using the power-up on was in sight at the last look
+    private float rescueAt = -1f;   // seconds into a fall it jumps out (-1 = not decided yet)
+
+    private void usePower(Match m, Car c, float dt) {
+        if (m.phase != Match.SHOW && m.phase != Match.DROP || c.frozenT > 0) return;
+        scanT -= dt;
+        int type = c.power;
+        if (type == PowerUps.JUMP) {
+            // the escape hatch: stranded on a wrong color with the drop about to happen
+            if (m.phase != Match.SHOW || m.timer > jumpLead) return;
+            Arena.Tile here = m.arena.cellAt(c.x, c.z);
+            if (here != null && here.state == Arena.PRESENT && here.color == m.target) return;
+            float left = goal == null || goal.color != m.target ? 99f : dist(c, goal) - Arena.PITCH * 0.45f;
+            if (left > Math.max(2f, c.speed()) * m.timer) c.wantPower = true;
+            return;
+        }
+        if (type == PowerUps.STICKY) {
+            if (c.speed() > c.maxSpeed * 0.75f && m.rng.chance(dt * (0.3f + wits))) c.wantPower = true;
+            return;
+        }
+        if (scanT <= 0f) {
+            scanT = m.rng.range(0.1f, 0.2f);
+            seen = worthIt(m, c, type);
+            if (!seen) powerT = -1f;
+            else if (powerT < 0f) powerT = reaction * m.rng.range(0.7f, 1.5f) + (1f - wits) * m.rng.range(0.2f, 1.2f);
+        }
+        if (powerT >= 0f && seen) {
+            powerT -= dt;
+            if (powerT <= 0f) {
+                c.wantPower = true;
+                powerT = -1f;
+            }
+        }
+    }
+
+    /** Is there something to throw at / shove right now? */
+    private boolean worthIt(Match m, Car c, int type) {
+        if (type == PowerUps.SNOWBALL) return m.power.snowTarget(c) >= 0;
+        if (type == PowerUps.ICE) return m.power.iceTarget(c) >= 0;
+        // super bump: a crowd, or anyone close while the floor is dropping and this car stands near an edge
+        Arena.Tile here = m.arena.cellAt(c.x, c.z);
+        boolean edgy = m.phase == Match.DROP && here != null && here.state == Arena.PRESENT;
+        float r = PowerUps.SHOCK_RADIUS * 0.8f;
+        int near = 0;
+        for (Car o : m.cars) {
+            if (o == c || !o.alive || o.falling || o.airborne) continue;
+            float dx = o.x - c.x, dz = o.z - c.z;
+            if (dx * dx + dz * dz < r * r) near++;
+        }
+        return near >= 3 || (near >= 2 && m.rng.chance(0.4f + wits * 0.4f)) || (edgy && near >= 1 && m.rng.chance(0.3f * wits));
+    }
+
+    /** Just started falling while holding a super jump: jump out, if it reacts in time. */
+    private void rescue(Match m, Car c) {
+        if (c.power != PowerUps.JUMP || dumb) return;
+        if (rescueAt < 0f) {
+            // the sharper the bot, the more likely it remembers the jump at all, and the quicker it reacts
+            rescueAt = m.rng.chance(0.2f + 0.75f * wits) ? m.rng.range(0.04f, 0.16f) + reaction * (0.45f - wits * 0.25f) : 9f;
+        }
+        if (c.fallT >= rescueAt) c.wantPower = true;
+    }
+
+    /** In the air: drift towards floor (over a hole or off the map: towards the nearest tile of the map). */
+    private void airSteer(Match m, Car c) {
+        Arena a = m.arena;
+        // where it comes down if it just lets go
+        float lx = c.x + c.vx * 0.6f, lz = c.z + c.vz * 0.6f;
+        if (a.hasAt(lx, lz) && a.hasAt(c.x, c.z)) {
+            if (m.phase == Match.DROP) c.inX = c.inZ = 0;
+            return;
+        }
+        Arena.Tile t = a.nearest(c.x, c.z);
+        if (t == null) return;
+        float dx = t.x - c.x, dz = t.z - c.z;
+        float d = (float) Math.sqrt(dx * dx + dz * dz) + 0.001f;
+        c.inX = dx / d;
+        c.inZ = dz / d;
+    }
+
+    // ------------------------------------------------------------------ driving
+
+    private void drive(Match m, Car c, float dt) {
         Arena a = m.arena;
         wobble += dt;
         if (m.phase == Match.INTRO || m.phase == Match.OVER) {
@@ -175,6 +282,8 @@ public final class Bot {
                 d += (s - Math.abs(t.gx - here.gx) - Math.abs(t.gz - here.gz)) * Arena.PITCH;
             }
             float score = d + t.crowd * (1.5f + 3f * smarts);
+            // a power-up lying there is a nice bonus for empty hands
+            if (c.power < 0 && m.power.tilePick[t.index] >= 0) score -= 2f + 2.5f * smarts;
             // avoid tiles at the map's outline or next to a hole a bit
             if (t.edge) score += 2f * smarts;
             if (score < bestScore) {
@@ -246,6 +355,12 @@ public final class Bot {
             else if (!a.has(t.gx, t.gz + 1)) az = -Math.abs(az);
         }
         float gx = t.x + ax, gz = t.z + az;
+        int pk = c.power < 0 && t.state == Arena.PRESENT ? m.power.tilePick[t.index] : -1;
+        if (pk >= 0) {
+            // grab the power-up lying on the goal tile on the way
+            gx = m.power.pickX[pk];
+            gz = m.power.pickZ[pk];
+        }
         int way = route(m.arena, c, t, gx, gz, dt);
         if (way >= 0) {
             // on the way around a hole: full speed at the waypoint, easing off only when the goal is right behind it

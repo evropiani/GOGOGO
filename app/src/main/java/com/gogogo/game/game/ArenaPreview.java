@@ -24,6 +24,7 @@ public final class ArenaPreview {
         o.bots = 7;
         o.size = 6;
         o.slowTimer = true;
+        o.noPowerUps = true;
         match = new Match(seed++, o, null);
         // show all six colors of the theme: start at the rounds that use six
         match.round = 11;

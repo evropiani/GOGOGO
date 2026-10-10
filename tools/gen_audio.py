@@ -297,6 +297,101 @@ def fx_honk():
     return lowpass(s, 2200) * env(d, 0.01, 0.05, 0.8, 0.06)
 
 
+# ------------------------------------------------------------------ power-ups
+
+def fx_pickup():
+    # a bright little "bling" climbing up, with a sparkle on top
+    out = np.zeros(int(SR * 0.45))
+    for i, n in enumerate([79, 86, 91]):
+        d = 0.16
+        s = (square(note(n), d, 0.25) * 0.4 + sine(note(n), d) + 0.3 * sine(note(n) * 2, d)) * decay(d, 16)
+        out = mix(out, at(s * 0.6, i * 0.05))
+    sp = noise(0.3)
+    sp = (sp - lowpass(sp, 7000)) * decay(0.3, 10) * 0.25
+    return mix(out, at(sp, 0.08))
+
+
+def fx_throw():
+    # a quick swish through the air
+    d = 0.24
+    n = noise(d)
+    n = lowpass(n, expsweep(900, 5000, d)) * env(d, 0.02, 0.05, 0.8, 0.12)
+    hup = sine(expsweep(260, 520, 0.08), 0.08) * decay(0.08, 30) * 0.4
+    return mix(n, hup)
+
+
+def fx_splat():
+    # wet snow hitting a car: a soft thump and a crunchy spray
+    d = 0.36
+    body = sine(expsweep(190, 60, d), d) * decay(d, 16)
+    mush = lowpass(noise(d), np.linspace(2600, 400, int(SR * d))) * decay(d, 9)
+    crunch = bandpass(noise(0.12), 1800, 1.5) * decay(0.12, 30)
+    return mix(body * 0.8, mush * 1.1, crunch * 0.9)
+
+
+def fx_freeze():
+    # frost crackling over glassy bell tones
+    d = 0.8
+    out = np.zeros(int(SR * d))
+    for i, (f, k) in enumerate([(2093.0, 6), (2637.0, 7), (3322.0, 8), (4186.0, 10)]):
+        s = (sine(f, d) + 0.25 * sine(f * 2.76, d)) * decay(d, k)
+        out = mix(out, at(s * 0.32, i * 0.035, d))
+    crackle = noise(0.5)
+    gate = (rng.uniform(0, 1, len(crackle)) < 0.03).astype(np.float64)
+    gate = lowpass(gate, 3000) * 8
+    crackle = (crackle - lowpass(crackle, 3000)) * gate * env(0.5, 0.005, 0.1, 0.7, 0.2)
+    return mix(out, crackle * 0.5)
+
+
+def fx_spring():
+    # boooing: a springy wobble going up
+    d = 0.6
+    t = np.linspace(0, 1, int(SR * d))
+    f = 170 + 520 * t ** 0.6
+    f = f * (1 + 0.22 * np.sin(2 * np.pi * 15 * t * d) * np.exp(-3.5 * t))
+    s = tri(f, d) * 0.8 + sine(f * 2, d) * 0.25
+    return s * env(d, 0.005, 0.15, 0.7, 0.25)
+
+
+def fx_thud():
+    # a heavy touchdown
+    d = 0.35
+    low = sine(expsweep(130, 38, d), d) * decay(d, 11)
+    dust = lowpass(noise(d), 900) * decay(d, 22)
+    click = noise(0.01) * 0.5
+    return mix(low * 1.1, dust * 0.9, click)
+
+
+def fx_goo():
+    # squelchy blorp with a few bubbles
+    d = 0.5
+    t = np.linspace(0, 1, int(SR * d))
+    f = 140 + 220 * np.sin(np.pi * t) + 40 * np.sin(2 * np.pi * 18 * t * d)
+    s = lowpass(saw(f, d), 900) * (0.6 + 0.4 * np.sin(2 * np.pi * 22 * t * d)) * env(d, 0.02, 0.1, 0.8, 0.15)
+    out = s
+    for i in range(4):
+        bd = 0.06
+        b = sine(expsweep(500 + i * 170, 1200 + i * 240, bd), bd) * decay(bd, 40) * 0.35
+        out = mix(out, at(b, 0.12 + i * 0.08))
+    return out
+
+
+def fx_boom():
+    # super bump: a deep whomp with a rushing blast
+    d = 1.0
+    low = sine(expsweep(110, 32, d), d) * decay(d, 4.5)
+    blast = lowpass(noise(d), expsweep(4000, 150, d)) * decay(d, 5)
+    click = sine(expsweep(900, 200, 0.03), 0.03) * decay(0.03, 80)
+    return np.tanh(mix(low * 1.3, blast * 0.9, click * 0.6) * 1.4)
+
+
+def power_effects():
+    return {
+        "pickup": fx_pickup, "throw": fx_throw, "splat": fx_splat, "freeze": fx_freeze, "spring": fx_spring,
+        "thud": fx_thud, "goo": fx_goo, "boom": fx_boom,
+    }
+
+
 # ------------------------------------------------------------------ music
 
 def drum_kick():
@@ -398,6 +493,11 @@ def main():
     ]
     save("music_game", song(146, 16, [C, A, F, G], game_lead, True, True, 2), 0.8)
     print("music game")
+
+    # made after the music, so adding them changed none of the sounds above
+    for name, fn in power_effects().items():
+        save(name, fn())
+        print("sfx", name)
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@ public final class Trails {
             "Drive with love.",
             "Taste the speed.",
             "Bzzzt!",
-            "Every boost is a party.",
+            "Every bump is a party.",
             "Red, yellow, GO!",
             "Leave a trail of riches."};
     public static final int[] RULE = {

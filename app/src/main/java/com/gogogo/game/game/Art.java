@@ -43,6 +43,8 @@ public final class Art {
             Cars.ALL[i].build(m);
             cars[i] = r.register(m.build());
             placeHoodCamera(Cars.ALL[i], cars[i]);
+            carTop[i] = highest(cars[i]);
+            if (i == Cars.DISCO) carTop[i] = Math.max(carTop[i], DISCO_Y + DISCO_R);
         }
         buildCarExtras(r);
 
@@ -121,6 +123,8 @@ public final class Art {
 
         // ---- arena looks (skins, skies, trails): see the block at the end of the class
         buildLooks(r);
+        // ---- power-ups: see the block after it
+        buildPowerUps(r);
     }
 
     /** Puts the hood camera over the middle of the car, just above its roof, so the hood shows below. */
@@ -1066,6 +1070,111 @@ public final class Art {
                 }
                 base = first;
             }
+        }
+    }
+
+    // ================================================================== power-ups
+
+    /** Height of the highest point of each car body (some carry tall things on the roof). */
+    public final float[] carTop = new float[Cars.ALL.length];
+
+    private static float highest(Mesh body) {
+        float top = 0f;
+        float[] v = body.vertices;
+        for (int k = 0; k < v.length; k += Mesh.VERTEX_FLOATS) top = Math.max(top, v[k + 1]);
+        return top;
+    }
+
+    /**
+     * Power-up icons by PowerUps type, about one unit across around the origin, in fixed colors: they float in the
+     * pickups, above the cars holding one, and fly as the snowball and the ice block.
+     */
+    public final Mesh[] powerIcon = new Mesh[PowerUps.COUNT];
+    /** Pickup: a ring standing up around the icon (PRIMARY tints). */
+    public Mesh pickupFrame;
+    /** Ice crystal along +y, unit height (PRIMARY tints): the shell of a frozen car. */
+    public Mesh shard;
+    /** Lumpy goo around a tire in wheel space (like the wheels: axle along x; PRIMARY tints): sticky wheels. */
+    public Mesh goo;
+    /** Thin flat ring of radius 1 (PRIMARY tints): shockwaves. */
+    public Mesh wave;
+
+    private void buildPowerUps(Renderer r) {
+        MeshBuilder m;
+        for (int i = 0; i < PowerUps.COUNT; i++) {
+            m = new MeshBuilder();
+            buildPowerIcon(m, i);
+            powerIcon[i] = r.register(m.build());
+        }
+
+        m = new MeshBuilder();
+        m.push().rotateX(PI / 2);
+        m.paint(1f).torus(0, 0, 0, 0.95f, 0.12f, 32, 8);
+        m.pop();
+        for (int k = 0; k < 4; k++) {
+            double a = k * Math.PI / 2 + Math.PI / 4;
+            m.paint(1f).sphere((float) Math.cos(a) * 0.95f, (float) Math.sin(a) * 0.95f, 0, 0.17f, 8);
+        }
+        pickupFrame = r.register(m.build());
+
+        m = new MeshBuilder();
+        m.paint(1f).lathe(new float[]{0, 0, 0.19f, 0, 0.19f, 0, 0.24f, 0.55f, 0.24f, 0.55f, 0, 1f}, 6);
+        shard = r.register(m.build());
+
+        m = new MeshBuilder();
+        m.rotateZ(PI / 2); // lathe axis y -> x, like the wheels
+        m.paint(1f).torus(0, 0, 0, 1.0f, 0.15f, 20, 6);
+        for (int k = 0; k < 9; k++) {
+            double a = k * Math.PI * 2 / 9;
+            float side = k % 2 == 0 ? 0.42f : -0.42f;
+            m.paint(k % 3 == 0 ? 1.15f : 1f).ellipsoid((float) Math.cos(a) * 1.02f, side, (float) Math.sin(a) * 1.02f, 0.2f, 0.16f, 0.2f, 8);
+        }
+        goo = r.register(m.build());
+
+        m = new MeshBuilder();
+        m.paint(1f).torus(0, 0, 0, 1f, 0.045f, 48, 6);
+        wave = r.register(m.build());
+    }
+
+    private static void buildPowerIcon(MeshBuilder m, int type) {
+        switch (type) {
+            case PowerUps.SNOWBALL: // a lumpy snowball
+                m.fixed(0xF4FAFF).sphere(0, 0, 0, 0.48f, 14);
+                m.fixed(0xFFFFFF).sphere(0.2f, 0.22f, 0.18f, 0.2f, 8);
+                m.fixed(0xE2F0FF).sphere(-0.25f, -0.1f, 0.22f, 0.18f, 8);
+                m.fixed(0xFFFFFF).sphere(0.06f, -0.27f, -0.24f, 0.17f, 8);
+                m.fixed(0xD6EAFF).sphere(-0.16f, 0.28f, -0.2f, 0.16f, 8);
+                m.fixed(0xEAF4FF).sphere(0.3f, -0.12f, -0.1f, 0.15f, 8);
+                break;
+            case PowerUps.ICE: // an ice cube with glints
+                m.push().rotateY(0.6f).rotateX(0.35f);
+                m.slot(MeshBuilder.FIXED).twoTone(0xDDF8FF, 0x74D4FF).box(0, 0, 0, 0.78f, 0.78f, 0.78f, 0.14f, 2);
+                m.fixed(0xFFFFFF).box(-0.18f, 0.1f, 0.395f, 0.09f, 0.38f, 0.02f, 0.02f, 1);
+                m.fixed(0xFFFFFF).box(0.0f, 0.18f, 0.395f, 0.06f, 0.2f, 0.02f, 0.02f, 1);
+                m.fixed(0xFFFFFF).box(0.395f, 0.1f, 0.15f, 0.02f, 0.38f, 0.09f, 0.02f, 1);
+                m.pop();
+                break;
+            case PowerUps.JUMP: // a spring under a big up arrow
+                m.fixed(0x3F8A1E).cylinder(0, -0.6f, 0, 0.34f, 0, 0.09f, 0.03f, 16);
+                for (int i = 0; i < 3; i++) m.fixed(0xD0D6E4).torus(0, -0.44f + i * 0.13f, 0, 0.24f, 0.05f, 16, 6);
+                m.fixed(0x5CC82A).cylinder(0, -0.14f, 0, 0.12f, 0, 0.32f, 0.03f, 12);
+                m.fixed(0x7BEA3C).cone(0, 0.16f, 0, 0.34f, 0f, 0.44f, 16);
+                m.fixed(0xC8FF9A).cone(0, 0.16f, 0, 0.345f, 0.3f, 0.05f, 16);
+                break;
+            case PowerUps.STICKY: // a drop of goo on a little puddle
+                m.fixed(0xB43CE6).ellipsoid(0, -0.46f, 0, 0.44f, 0.08f, 0.44f, 14);
+                m.fixed(0xD05CFF).sphere(0, -0.12f, 0, 0.38f, 14);
+                m.fixed(0xD05CFF).cone(0, 0.1f, 0, 0.31f, 0f, 0.5f, 14);
+                m.fixed(0xF6D2FF).ellipsoid(-0.15f, 0.02f, 0.29f, 0.08f, 0.14f, 0.06f, 8);
+                m.fixed(0xF6D2FF).sphere(-0.2f, -0.2f, 0.27f, 0.05f, 6);
+                break;
+            default: // super bump: a spiky burst
+                m.push().rotateX(PI / 2);
+                m.fixed(0xFF7A1F).extrude(starPoly2(8, 0.62f, 0.36f), -0.12f, 0.12f);
+                m.fixed(0xFFD23B).extrude(starPoly2(8, 0.4f, 0.24f), -0.17f, 0.17f);
+                m.fixed(0xFFFFFF).cylinder(0, 0, 0, 0.12f, -0.2f, 0.2f, 0.04f, 12);
+                m.pop();
+                break;
         }
     }
 }

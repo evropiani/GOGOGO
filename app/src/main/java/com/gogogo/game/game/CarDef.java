@@ -5,7 +5,7 @@ import com.gogogo.game.engine.MeshBuilder;
 /** Static description of a car model: stats, wheel layout, look. */
 public abstract class CarDef {
     public static final int SPEED = 0, GRIP = 1, BOOST = 2, WEIGHT = 3;
-    public static final String[] STAT_NAME = {"SPEED", "GRIP", "BOOST", "WEIGHT"};
+    public static final String[] STAT_NAME = {"SPEED", "GRIP", "BUMP", "WEIGHT"};
     public static final int MAX_LEVEL = 5;
 
     public final int id;

@@ -56,6 +56,24 @@ public final class Car {
     public boolean god;
     public boolean aliveAtRoundStart = true;
 
+    // power-ups (see PowerUps)
+    /** Held power-up (PowerUps type), -1 = none. */
+    public int power = -1;
+    /** Set to use the held power-up this step (like wantBoost). */
+    public boolean wantPower;
+    /** Seconds left: frozen in an ice block, on sticky wheels, sliding after a power-up hit. */
+    public float frozenT, stickyT, slipT;
+    /** In the air after a super jump (no floor check until it comes down). */
+    public boolean airborne;
+    public float airT;
+    /** Set for one step: came down from a super jump (landSpeed = how hard), thawed out of an ice block. */
+    public boolean justLanded, justThawed;
+    public float landSpeed;
+    /** Power-up that gave the last hit (lastHitBy), -1 = a plain bump. */
+    public int lastHitPower = -1;
+    /** Power-ups picked up and used, and falls saved by a super jump, this match. */
+    public int pickups, powersUsed, rescues;
+
     public Car(int index, CarDef def, String name, boolean isPlayer, int[] lv) {
         this.index = index;
         this.def = def;
@@ -89,6 +107,8 @@ public final class Car {
 
     /** Physics for one fixed step. Returns true if the car just lost its footing. */
     public boolean step(Arena arena, float dt, boolean canDrive) {
+        justLanded = false;
+        justThawed = false;
         if (falling) {
             justBoosted = false;
             wantBoost = false;
@@ -103,6 +123,19 @@ public final class Car {
             rotZ += spinZ * dt;
             return false;
         }
+
+        if (stickyT > 0) stickyT = Math.max(0f, stickyT - dt);
+        if (slipT > 0) slipT = Math.max(0f, slipT - dt);
+        if (frozenT > 0) {
+            frozenT -= dt;
+            if (frozenT <= 0) {
+                frozenT = 0;
+                justThawed = true;
+            }
+        }
+        boolean frozen = frozenT > 0;
+        if (frozen) canDrive = false;
+        if (airborne) return stepAir(arena, dt, canDrive);
 
         float fx = (float) Math.sin(yaw), fz = (float) Math.cos(yaw);
         float mag = (float) Math.sqrt(inX * inX + inZ * inZ);
@@ -168,10 +201,14 @@ public final class Car {
         // grip: kill lateral velocity, drag forward velocity
         float fwd = vx * fx + vz * fz;
         float latx = vx - fx * fwd, latz = vz - fz * fwd;
-        float g = (float) Math.exp(-grip * dt * (boostT > 0 ? 0.35f : 1f));
+        float gr = grip;
+        if (stickyT > 0) gr *= PowerUps.STICKY_GRIP;
+        if (slipT > 0) gr *= 0.3f;
+        if (frozen) gr = PowerUps.ICE_GRIP;
+        float g = (float) Math.exp(-gr * dt * (boostT > 0 ? 0.35f : 1f));
         latx *= g;
         latz *= g;
-        float drag = braking ? 7f : (thr > 0.05f || reversing ? 0.35f : 2.6f);
+        float drag = frozen ? PowerUps.ICE_GRIP : (braking ? 7f : (thr > 0.05f || reversing ? 0.35f : 2.6f));
         fwd *= (float) Math.exp(-drag * dt);
         if (reversing && fwd < -maxSpeed * 0.45f) fwd = -maxSpeed * 0.45f;
         vx = fx * fwd + latx;
@@ -188,21 +225,23 @@ public final class Car {
         x += vx * dt;
         z += vz * dt;
 
-        // visual: wheel spin, lean, topper wobble spring driven by acceleration
-        wheelSpin += fwd * dt / Math.max(0.2f, def.wheelR);
+        // visual: wheel spin, lean, topper wobble spring driven by acceleration (all stuck while frozen)
         float accX = (vx - lastVx) / dt, accZ = (vz - lastVz) / dt;
         lastVx = vx;
         lastVz = vz;
-        tilt = Ease.approach(tilt, -yawRate * sp * 0.006f, 8f, dt);
-        // local acceleration in car frame
-        float aFwd = accX * fx + accZ * fz;
-        float aSide = accX * fz - accZ * fx;
-        topVX += (-topX * 90f - topVX * 7f - aSide * 0.05f) * dt;
-        topVZ += (-topZ * 90f - topVZ * 7f - aFwd * 0.05f) * dt;
-        topX += topVX * dt;
-        topZ += topVZ * dt;
-        topX = Math.max(-0.7f, Math.min(0.7f, topX));
-        topZ = Math.max(-0.7f, Math.min(0.7f, topZ));
+        if (!frozen) {
+            wheelSpin += fwd * dt / Math.max(0.2f, def.wheelR);
+            tilt = Ease.approach(tilt, -yawRate * sp * 0.006f, 8f, dt);
+            // local acceleration in car frame
+            float aFwd = accX * fx + accZ * fz;
+            float aSide = accX * fz - accZ * fx;
+            topVX += (-topX * 90f - topVX * 7f - aSide * 0.05f) * dt;
+            topVZ += (-topZ * 90f - topVZ * 7f - aFwd * 0.05f) * dt;
+            topX += topVX * dt;
+            topZ += topVZ * dt;
+            topX = Math.max(-0.7f, Math.min(0.7f, topX));
+            topZ = Math.max(-0.7f, Math.min(0.7f, topZ));
+        }
 
         // squash spring + hop
         squashV += (-squash * 160f - squashV * 9f) * dt;
@@ -235,4 +274,116 @@ public final class Car {
 
     public boolean justBoosted;
     private float lastVx, lastVz;
+
+    // ------------------------------------------------------------------ power-up effects
+
+    /** Super jump: up into a long floaty arc. Also works in the first moments of a fall (cancels it). */
+    public void superJump() {
+        if (falling) {
+            // rescued: the fall is undone, the tumble settles in the air
+            falling = false;
+            fallT = 0f;
+            spinX = spinZ = 0f;
+        }
+        airborne = true;
+        airT = 0f;
+        vy = PowerUps.JUMP_V;
+        hop = 0f;
+        hopV = 0f;
+        boostT = 0f;
+        vx *= 0.55f;
+        vz *= 0.55f;
+        squashV += 9f;
+    }
+
+    /** Ice block: stuck in place (mostly) and frozen solid for a while. */
+    public void freeze() {
+        frozenT = PowerUps.FREEZE_TIME;
+        vx *= 0.35f;
+        vz *= 0.35f;
+        boostT = 0f;
+        wantBoost = false;
+        stickyT = 0f;
+    }
+
+    /** One step in the air: limited air control, a floaty arc, landing or falling at the bottom of it. */
+    private boolean stepAir(Arena arena, float dt, boolean canDrive) {
+        airT += dt;
+        float yawRate = 0f, thr = 0f;
+        if (canDrive) {
+            if (manual && bot == null) {
+                float st = Math.max(-1f, Math.min(1f, steer));
+                yawRate = -st * manualTurn * 0.8f;
+                yaw = Ease.wrapAngle(yaw + yawRate * dt);
+                thr = Math.max(-1f, Math.min(1f, throttle));
+            } else {
+                float mag = Math.min(1f, (float) Math.sqrt(inX * inX + inZ * inZ));
+                if (mag > 0.08f) {
+                    float diff = Ease.wrapAngle((float) Math.atan2(inX, inZ) - yaw);
+                    float maxTurn = turnRate * 0.8f * dt;
+                    float turn = Math.max(-maxTurn, Math.min(maxTurn, diff * 10f * dt));
+                    yaw = Ease.wrapAngle(yaw + turn);
+                    yawRate = turn / dt;
+                    thr = mag * Math.max(0f, (float) Math.cos(diff));
+                }
+            }
+        }
+        float fx = (float) Math.sin(yaw), fz = (float) Math.cos(yaw);
+        steerVis = Ease.approach(steerVis, Math.max(-0.5f, Math.min(0.5f, yawRate * 0.12f)), 12f, dt);
+        if (thr > 0) {
+            vx += fx * PowerUps.AIR_ACCEL * thr * dt;
+            vz += fz * PowerUps.AIR_ACCEL * thr * dt;
+        } else if (thr < 0) {
+            float k = (float) Math.exp(2.5f * thr * dt);
+            vx *= k;
+            vz *= k;
+        }
+        float k = (float) Math.exp(-0.35f * dt);
+        vx *= k;
+        vz *= k;
+        float sp = (float) Math.sqrt(vx * vx + vz * vz);
+        if (sp > PowerUps.AIR_MAX) {
+            vx *= PowerUps.AIR_MAX / sp;
+            vz *= PowerUps.AIR_MAX / sp;
+        }
+        x += vx * dt;
+        z += vz * dt;
+        vy -= PowerUps.JUMP_GRAVITY * dt;
+        y += vy * dt;
+        lastVx = vx;
+        lastVz = vz;
+
+        // nose up on the way up, down on the way down; wheels spin free
+        rotX = Ease.approach(rotX, Math.max(-0.35f, Math.min(0.35f, -vy * 0.02f)), 5f, dt);
+        rotZ = Ease.approach(rotZ, 0f, 5f, dt);
+        tilt = Ease.approach(tilt, 0f, 6f, dt);
+        wheelSpin += 14f * dt;
+        squashV += (-squash * 160f - squashV * 9f) * dt;
+        squash += squashV * dt;
+        if (flash > 0) flash = Math.max(0f, flash - dt * 4f);
+        if (boostCd > 0) boostCd -= dt;
+        if (boostT > 0) boostT -= dt;
+        wantBoost = false;
+        justBoosted = false;
+
+        if (y <= 0f && vy < 0f) {
+            airborne = false;
+            if (god || arena.supported(x, z)) {
+                landSpeed = -vy;
+                y = 0f;
+                vy = 0f;
+                rotX = rotZ = 0f;
+                squashV -= Math.min(16f, landSpeed * 0.8f);
+                justLanded = true;
+                return false;
+            }
+            // nothing underneath: down it goes
+            falling = true;
+            fallT = 0f;
+            spinX = (float) (Math.random() * 6 - 3);
+            spinZ = (float) (Math.random() * 6 - 3);
+            return true;
+        }
+        return false;
+    }
 }

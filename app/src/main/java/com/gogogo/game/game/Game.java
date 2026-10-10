@@ -70,7 +70,14 @@ public final class Game {
         b.initGL();
         if (!created) {
             created = true;
-            screen = new TitleScreen(this);
+            // after an update, show what's new once; a fresh install starts on the title screen
+            boolean updated = save.existed && !Version.NAME.equals(save.lastVersion);
+            if (!save.existed) {
+                save.lastVersion = Version.NAME;
+                save.markDirty();
+                save.flush();
+            }
+            screen = updated ? new WhatsNewScreen(this) : new TitleScreen(this);
             screen.enter();
             sfx.music(Sfx.MUSIC_MENU);
         }

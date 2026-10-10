@@ -14,6 +14,12 @@ public abstract class CarDef {
     public final float[] stats; // base 1..5
     public final int defPaint, defAccent;
     public boolean secret;
+    /** Earned by reaching this player level (0 = not a level reward). */
+    public int levelReq;
+    /** Premium price in Rims (0 = not a premium car). */
+    public int rimsPrice;
+    /** Bots never drive this car. */
+    public boolean exclusive;
 
     // layout
     public float wheelR = 0.4f, wheelW = 0.34f, wheelX = 0.8f, wheelZf = 0.8f, wheelZr = -0.8f;
@@ -47,6 +53,19 @@ public abstract class CarDef {
         wheelX = x;
         wheelZf = zf;
         wheelZr = zr;
+        return this;
+    }
+
+    /** Makes this car a level reward. */
+    public CarDef level(int lv) {
+        levelReq = lv;
+        exclusive = true;
+        return this;
+    }
+
+    /** Makes this car a premium (Rims) car. */
+    public CarDef rims(int price) {
+        rimsPrice = price;
         return this;
     }
 

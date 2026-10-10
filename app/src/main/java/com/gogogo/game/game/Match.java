@@ -19,15 +19,21 @@ public final class Match {
     /** Match settings (including developer toggles). */
     public static final class Options {
         public int bots = 99;
+        /** Arena layout (see Maps). */
+        public int map;
+        /** If > 0: a plain size x size grid instead of the map (small previews). */
+        public int size;
         public boolean god, freezeTimer, superSpeed, dumbBots, forceDuck, slowTimer, autopilot;
         public boolean attract; // title screen background (no player)
     }
 
     public static final float STEP = 1f / 60f;
     public static final float INTRO_TIME = 3.4f;
+    /** Start lights: red, then yellow, then green when the first round starts (at INTRO_TIME). */
+    public static final float LIGHT_RED = INTRO_TIME - 1.7f, LIGHT_YELLOW = INTRO_TIME - 0.85f;
     public static final float DROP_TIME = 2.2f;
 
-    public final Arena arena = new Arena(15);
+    public final Arena arena;
     public final Rng rng;
     public final Options opt;
     public Car[] cars;
@@ -44,6 +50,8 @@ public final class Match {
     public int alive;
     public int total;
     public Car winner;
+    /** Set by the screen: the player won while driving in HOOD view. */
+    public boolean hoodWin;
     public boolean tie;
     public final ArrayList<Car> tieGroup = new ArrayList<Car>();
     public int lastTick = -1;
@@ -61,6 +69,8 @@ public final class Match {
     public Match(long seed, Options opt, Save save) {
         this.rng = new Rng(seed);
         this.opt = opt;
+        int mapId = Math.max(0, Math.min(Maps.COUNT - 1, opt.map));
+        arena = opt.size > 0 ? new Arena(opt.size, null) : new Arena(Maps.size(mapId), Maps.mask(mapId));
         int n = opt.attract ? Math.max(2, opt.bots) : opt.bots + 1;
         cars = new Car[n];
         total = n;
@@ -78,22 +88,27 @@ public final class Match {
             }
             player.god = opt.god;
             player.manual = true;
+            player.trail = save.trail;
             if (opt.autopilot) player.bot = new Bot(rng, 2);
             cars[k++] = player;
         }
         for (; k < n; k++) {
-            int id = rng.i(Cars.ALL.length - 1); // never the secret car
+            int id;
+            do {
+                id = rng.i(Cars.ALL.length);
+            } while (!Cars.forBots(id));
             int tier = rng.f() < 0.3f ? 0 : (rng.f() < 0.86f ? 1 : 2);
             int[] lv = new int[4];
             for (int i = 0; i < 4; i++) lv[i] = rng.i(tier + 2);
             Car c = new Car(k, Cars.ALL[id], names[k], false, lv);
             c.bot = new Bot(rng, tier);
             c.bot.dumb = opt.dumbBots;
-            int paint = rng.chance(0.5f) ? Cars.ALL[id].defPaint : rng.i(Palette.PAINT.length - 2);
-            int accent = rng.chance(0.6f) ? Cars.ALL[id].defAccent : rng.i(Palette.PAINT.length - 2);
+            int paint = rng.chance(0.5f) ? Cars.ALL[id].defPaint : botPaint();
+            int accent = rng.chance(0.6f) ? Cars.ALL[id].defAccent : botPaint();
             int topper = rng.chance(0.45f) ? 0 : rng.i(Palette.TOPPER_NAME.length);
             int wheel = rng.chance(0.6f) ? 0 : rng.i(Palette.WHEEL_NAME.length);
             c.setLook(paint, accent, topper, wheel);
+            c.trail = rng.chance(0.3f) ? rng.i(Trails.COUNT) : 0;
             cars[k] = c;
         }
         placeCars();
@@ -103,10 +118,18 @@ public final class Match {
         arena.assignColors(rng, numColors, target, 1f / numColors, 3);
     }
 
+    private int botPaint() {
+        int p;
+        do {
+            p = rng.i(Palette.PAINT.length);
+        } while (!Palette.botPaint(p));
+        return p;
+    }
+
     private void placeCars() {
-        int nt = arena.tiles.length;
+        int nt = arena.count;
         int[] order = new int[nt];
-        for (int i = 0; i < nt; i++) order[i] = i;
+        for (int i = 0, k = 0; i < arena.tiles.length; i++) if (arena.tiles[i].exists) order[k++] = i;
         for (int i = nt - 1; i > 0; i--) {
             int j = rng.i(i + 1);
             int t = order[i];
@@ -118,18 +141,23 @@ public final class Match {
             Car c = cars[i];
             Arena.Tile t;
             if (c.isPlayer) {
-                // somewhere near the middle
-                int mid = arena.n / 2 + rng.i(3) - 1;
-                t = arena.tiles[(mid + rng.i(3) - 1) * arena.n + mid];
+                // somewhere near the middle (on maps with a hole there: the closest tile not at its rim)
+                t = arena.nearest(rng.range(-1.5f, 1.5f) * Arena.PITCH, rng.range(-1.5f, 1.5f) * Arena.PITCH, true);
             } else {
                 t = arena.tiles[order[ti++ % nt]];
             }
             c.x = t.x + rng.range(-1.2f, 1.2f);
             c.z = t.z + rng.range(-1.2f, 1.2f);
             c.yaw = rng.range(-3.14f, 3.14f);
+            // the player starts facing open floor, not a hole
+            for (int k = 0; k < 16 && c.isPlayer && !clearAhead(c, 12f); k++) c.yaw = rng.range(-3.14f, 3.14f);
         }
         // separate overlaps
         for (int it = 0; it < 10; it++) collide(0f, false);
+    }
+
+    private boolean clearAhead(Car c, float d) {
+        return arena.clearLine(c.x, c.z, c.x + (float) Math.sin(c.yaw) * d, c.z + (float) Math.cos(c.yaw) * d, 1.2f);
     }
 
     // ------------------------------------------------------------------ rules
@@ -176,6 +204,10 @@ public final class Match {
         }
         timerMax = timeFor(round);
         timer = timerMax;
+        if (player != null) {
+            player.onTarget = false;
+            player.safeAt = -1f;
+        }
         lastTick = -1;
         phase = SHOW;
         phaseT = 0;
@@ -190,6 +222,7 @@ public final class Match {
         // somewhere a bit away from the player
         for (int tries = 0; tries < 60; tries++) {
             Arena.Tile t = arena.tiles[rng.i(arena.tiles.length)];
+            if (!t.exists) continue;
             float dx = t.x - player.x, dz = t.z - player.z;
             float d = dx * dx + dz * dz;
             if (d > 80f && d < 600f) {
@@ -222,8 +255,9 @@ public final class Match {
         phaseT += dt;
         switch (phase) {
             case INTRO: {
-                int n = 3 - (int) Math.floor((phaseT - 0.4f) / 0.85f);
-                if (phaseT >= 0.4f && n < countdown && n >= 1) {
+                // start lights: EV_COUNT 3 = red, 2 = yellow, 0 = green (go)
+                int n = phaseT >= LIGHT_YELLOW ? 2 : (phaseT >= LIGHT_RED ? 3 : 4);
+                if (n < countdown) {
                     countdown = n;
                     emit(EV_COUNT, null, null, n);
                 }
@@ -235,6 +269,7 @@ public final class Match {
             }
             case SHOW: {
                 if (!opt.freezeTimer) timer -= dt;
+                trackClutch();
                 int sec = (int) Math.ceil(timer);
                 if (sec != lastTick && sec <= 3 && sec >= 1) {
                     lastTick = sec;
@@ -244,6 +279,9 @@ public final class Match {
                     timer = 0;
                     phase = DROP;
                     phaseT = 0;
+                    if (player != null && player.alive && player.onTarget && player.safeAt >= 0f && player.safeAt < CLUTCH_TIME) {
+                        player.clutches++;
+                    }
                     arena.dropAllBut(rng, target);
                     emit(EV_DROP, null, null, 0);
                 }
@@ -263,7 +301,10 @@ public final class Match {
         for (Car c : cars) {
             if (!c.alive && c.y < -80f) continue;
             if (c.step(arena, dt, canDrive && c.alive)) justFell.add(c);
-            if (c.justBoosted) emit(EV_BOOST, c, null, 0);
+            if (c.justBoosted) {
+                c.boosts++;
+                emit(EV_BOOST, c, null, 0);
+            }
         }
         collide(dt, true);
         arena.landed = 0;
@@ -322,6 +363,18 @@ public final class Match {
                 finishT = 0;
             }
         }
+    }
+
+    /** Reaching the target color with less than this many seconds left counts as a clutch save. */
+    public static final float CLUTCH_TIME = 0.5f;
+
+    private void trackClutch() {
+        Car p = player;
+        if (p == null || !p.alive || p.falling) return;
+        Arena.Tile t = arena.cellAt(p.x, p.z);
+        boolean on = t != null && t.exists && t.color == target;
+        if (on && !p.onTarget) p.safeAt = Math.max(0f, timer);
+        p.onTarget = on;
     }
 
     private void updateDuck(float dt) {

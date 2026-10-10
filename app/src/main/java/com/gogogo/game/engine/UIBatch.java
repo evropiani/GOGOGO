@@ -248,12 +248,12 @@ public final class UIBatch {
         float ex = hw + softness + 1.5f, ey = hh + softness + 1.5f;
         float c = (float) Math.cos(rot), s = (float) Math.sin(rot);
         int o = quads * 4 * FLOATS;
-        float[] lx = {-ex, ex, ex, -ex};
-        float[] ly = {-ey, -ey, ey, ey};
         for (int i = 0; i < 4; i++) {
-            float x = cx + lx[i] * c - ly[i] * s;
-            float y = cy + lx[i] * s + ly[i] * c;
-            vtx(o + i * FLOATS, x, y, lx[i], ly[i], fill, borderColor, hw, hh, radius, border, softness, gloss, 0f);
+            float lx = (i == 0 || i == 3) ? -ex : ex;
+            float ly = i < 2 ? -ey : ey;
+            float x = cx + lx * c - ly * s;
+            float y = cy + lx * s + ly * c;
+            vtx(o + i * FLOATS, x, y, lx, ly, fill, borderColor, hw, hh, radius, border, softness, gloss, 0f);
         }
         quads++;
     }

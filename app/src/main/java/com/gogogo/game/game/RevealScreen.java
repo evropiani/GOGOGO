@@ -74,6 +74,10 @@ public final class RevealScreen extends Screen {
         }
     }
 
+    public boolean allowNotes() {
+        return false;
+    }
+
     public boolean back() {
         if (t > 2f) game.setScreen(next);
         return true;

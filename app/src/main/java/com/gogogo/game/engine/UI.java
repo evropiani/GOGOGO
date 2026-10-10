@@ -119,7 +119,7 @@ public final class UI {
     /** Core hit logic. Returns true on click. */
     public boolean hit(String id, float x, float y, float w, float h) {
         if (!enabled || ptr == null) return false;
-        if (ptr.justDown && inside(ptr.startX, ptr.startY, x, y, w, h)) pressed = id;
+        if (ptr.justDown && inside(ptr.startX, ptr.startY, x, y, w, h) && inClip(ptr.startX, ptr.startY)) pressed = id;
         if (released && id.equals(pressed) && !dragging && inside(relX, relY, x - 12, y - 12, w + 24, h + 24)) {
             pressed = null;
             clicked = id;
@@ -142,7 +142,7 @@ public final class UI {
 
     /** Swallows any press so that nothing underneath reacts (modal overlays). */
     public void block(float x, float y, float w, float h) {
-        if (ptr != null && ptr.justDown && inside(ptr.startX, ptr.startY, x, y, w, h) && pressed == null) pressed = "__block";
+        if (ptr != null && ptr.justDown && inside(ptr.startX, ptr.startY, x, y, w, h) && inClip(ptr.startX, ptr.startY) && pressed == null) pressed = "__block";
     }
 
     // ------------------------------------------------------------------ scrolling
@@ -171,15 +171,34 @@ public final class UI {
             }
         }
         b.clip(x, y, w, h);
+        clipOn = true;
+        clipX = x;
+        clipY = y;
+        clipW = w;
+        clipH = h;
         return s[0];
     }
 
     public void endScroll() {
         b.unclip();
+        clipOn = false;
+    }
+
+    // widgets scrolled out of view must not take presses
+    private boolean clipOn;
+    private float clipX, clipY, clipW, clipH;
+
+    private boolean inClip(float px, float py) {
+        return !clipOn || inside(px, py, clipX, clipY, clipW, clipH);
     }
 
     public void resetScroll(String id) {
         scroll.remove(id);
+    }
+
+    /** Jumps a scroll region to an offset (it settles inside the content once the region is drawn). */
+    public void setScroll(String id, float offset) {
+        scroll.put(id, new float[]{offset, 0f, offset});
     }
 
     // ------------------------------------------------------------------ styled widgets
@@ -232,6 +251,61 @@ public final class UI {
         b.shape(cx, cy - depth / 2 + press - (sh - depth) * 0.22f, sw - r * 1.2f, (sh - depth) * 0.22f, (sh - depth) * 0.11f, 0x40FFFFFF, 0, 0, 0, 0, 0);
         if (label != null) {
             b.textFit(b.title, label, cx, cy - depth / 2 + press + 2, textSize * sc, sw - 24, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, textSize * 0.11f);
+        }
+    }
+
+    /** Button whose label is "prefix [icon] label" (e.g. "BUY (coin) 600"); prefix and label may be null. */
+    public boolean iconButton(String id, float x, float y, float w, float h, int color, String prefix, int icon, String label, float textSize, boolean active) {
+        boolean click = hit(id, x, y, w, h) && active;
+        drawButton(id, x, y, w, h, color, null, textSize, active);
+        // the face position, as drawButton places it
+        boolean down = isPressed(id) && holding(x - 12, y - 12, w + 24, h + 24);
+        float depth = Math.min(12f, h * 0.14f);
+        float press = down ? depth * 0.75f : 0f;
+        float sc = 1f + (float) Math.sin(bounce(id) * Math.PI) * 0.06f;
+        iconLabel(x + w / 2, y + h / 2 - depth / 2 + press + 2, w * sc - 28, prefix, icon, label, textSize * sc, 0xFFFFFFFF, 0xFF2A1840, textSize * 0.11f);
+        return click;
+    }
+
+    public static final int ICON_NONE = 0, ICON_COIN = 1, ICON_RIM = 2, ICON_LOCK = 3, ICON_CHECK = 4, ICON_STAR = 5;
+
+    /** Draws "prefix [icon] label" centered at (cx, cy) in the title font, shrunk to fit maxW. */
+    public void iconLabel(float cx, float cy, float maxW, String prefix, int icon, String label, float size, int color, int outlineColor, float outline) {
+        float gap = size * 0.2f;
+        float iw = icon != ICON_NONE ? size * 0.95f : 0f;
+        float pw = prefix != null ? b.title.width(prefix, size) + gap : 0f;
+        float lw = label != null ? b.title.width(label, size) : 0f;
+        float ig = icon != ICON_NONE && label != null ? gap : 0f;
+        float total = pw + iw + ig + lw;
+        if (total > maxW && total > 0) {
+            float k = maxW / total;
+            size *= k;
+            iw *= k;
+            pw *= k;
+            ig *= k;
+            total = maxW;
+        }
+        float x = cx - total / 2;
+        if (prefix != null) {
+            b.text(b.title, prefix, x, cy, size, color, UIBatch.LEFT, outlineColor, outline);
+            x += pw;
+        }
+        if (icon != ICON_NONE) {
+            icon(icon, x + iw / 2, cy, iw, color);
+            x += iw + ig;
+        }
+        if (label != null) b.text(b.title, label, x, cy, size, color, UIBatch.LEFT, outlineColor, outline);
+    }
+
+    /** One of the ICON_* icons, s units across. Lock, check and star use the given color. */
+    public void icon(int icon, float cx, float cy, float s, int color) {
+        switch (icon) {
+            case ICON_COIN: coin(cx, cy, s * 0.44f); break;
+            case ICON_RIM: rim(cx, cy, s * 0.46f); break;
+            case ICON_LOCK: iconLock(cx, cy + s * 0.04f, s * 0.95f, color); break;
+            case ICON_CHECK: iconCheck(cx, cy, s, color); break;
+            case ICON_STAR: star(cx, cy, s * 0.5f, color); break;
+            default: break;
         }
     }
 
@@ -316,6 +390,37 @@ public final class UI {
         b.circle(cx, cy + r * 0.18f, r, 0xFFC77800);
         b.shape(cx, cy, r * 2, r * 2, r, 0xFFFFD23F, 0xFFE89A00, r * 0.16f, 0.4f, 0, 0);
         b.shape(cx, cy, r * 0.9f, r * 0.9f, r * 0.45f, 0, 0xFFFFF0A0, r * 0.12f, 0, 0, 0);
+    }
+
+    /** A Rim (the premium currency): dark tire around a shiny chrome-and-cyan hub with spokes. */
+    public void rim(float cx, float cy, float r) {
+        b.circle(cx, cy + r * 0.18f, r, 0xFF0E1426);
+        b.shape(cx, cy, r * 2, r * 2, r, 0xFF323A52, 0xFF161C30, r * 0.14f, 0.35f, 0, 0);
+        b.shape(cx, cy, r * 1.36f, r * 1.36f, r * 0.68f, 0xFFF2FBFF, 0xFF8FE4FF, r * 0.12f, 0.55f, 0, 0);
+        for (int i = 0; i < 5; i++) {
+            float a = (float) (i * Math.PI * 2 / 5 - Math.PI / 2);
+            b.shape(cx + (float) Math.cos(a) * r * 0.32f, cy + (float) Math.sin(a) * r * 0.32f, r * 0.5f, r * 0.17f, r * 0.08f, 0xFF4FC8F2, 0, 0, 0, 0, a);
+        }
+        b.circle(cx, cy, r * 0.2f, 0xFF2E9FE0);
+        b.circle(cx - r * 0.42f, cy - r * 0.5f, r * 0.13f, 0xB0FFFFFF);
+    }
+
+    /** Achievement medal: ribbon tails and a disc with a star. */
+    public void medal(float cx, float cy, float r, int color) {
+        b.shape(cx - r * 0.38f, cy + r * 0.85f, r * 0.42f, r * 0.95f, r * 0.08f, 0xFFFF4FA3, 0, 0, 0, 0, 0.35f);
+        b.shape(cx + r * 0.38f, cy + r * 0.85f, r * 0.42f, r * 0.95f, r * 0.08f, 0xFF3BA8FF, 0, 0, 0, 0, -0.35f);
+        b.circle(cx, cy + r * 0.12f, r, shade(opaque(color), 0.7f));
+        b.shape(cx, cy, r * 2, r * 2, r, opaque(color), 0xFFFFFFFF, r * 0.12f, 0.45f, 0, 0);
+        star(cx, cy, r * 0.62f, 0xFFFFFFFF);
+    }
+
+    /** Gift box with a ribbon. */
+    public void gift(float cx, float cy, float s, int color, int ribbon) {
+        b.roundRect(cx - s * 0.4f, cy - s * 0.1f, s * 0.8f, s * 0.5f, s * 0.06f, color);
+        b.roundRect(cx - s * 0.46f, cy - s * 0.28f, s * 0.92f, s * 0.22f, s * 0.06f, shade(opaque(color), 1.18f));
+        b.rect(cx - s * 0.08f, cy - s * 0.28f, s * 0.16f, s * 0.68f, ribbon);
+        b.shape(cx - s * 0.16f, cy - s * 0.36f, s * 0.3f, s * 0.16f, s * 0.08f, ribbon, 0, 0, 0, 0, 0.5f);
+        b.shape(cx + s * 0.16f, cy - s * 0.36f, s * 0.3f, s * 0.16f, s * 0.08f, ribbon, 0, 0, 0, 0, -0.5f);
     }
 
     public void star(float cx, float cy, float r, int color) {

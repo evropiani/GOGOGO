@@ -4,19 +4,22 @@ import com.gogogo.game.engine.M4;
 import com.gogogo.game.engine.Mesh;
 import com.gogogo.game.engine.Renderer;
 
-/** Pooled chunky 3D particles: confetti cubes, puffs, stars. */
+/** Pooled chunky 3D particles: confetti cubes, puffs, stars, and the boost trail shapes. */
 public final class Particles {
-    public static final int CUBE = 0, BALL = 1, STAR = 2, BONK = 3;
+    public static final int CUBE = 0, BALL = 1, STAR = 2, BONK = 3, HEART = 4, BOLT = 5, COIN = 6, BUBBLE = 7, SPARKLE = 8;
     private static final int MAX = 900;
 
     private final float[] x = new float[MAX], y = new float[MAX], z = new float[MAX];
     private final float[] vx = new float[MAX], vy = new float[MAX], vz = new float[MAX];
     private final float[] rx = new float[MAX], ry = new float[MAX], rvx = new float[MAX], rvy = new float[MAX];
     private final float[] life = new float[MAX], maxLife = new float[MAX], size = new float[MAX], grav = new float[MAX], drag = new float[MAX];
-    private final int[] type = new int[MAX], color = new int[MAX];
+    private final float[] glow = new float[MAX];
+    private final int[] type = new int[MAX], color = new int[MAX], endColor = new int[MAX];
     private final boolean[] shrink = new boolean[MAX];
     private int cursor;
     private final float[] mtx = new float[16];
+    /** Yaw that turns +z towards the camera (set before draw; hearts, bolts, bubbles and sparkles face it). */
+    public float faceYaw;
 
     public int spawn(int t, float px, float py, float pz, float pvx, float pvy, float pvz, float sz, float lifeS, int col, float gravity) {
         int i = cursor;
@@ -31,14 +34,40 @@ public final class Particles {
         size[i] = sz;
         life[i] = maxLife[i] = lifeS;
         color[i] = col;
+        endColor[i] = col;
         grav[i] = gravity;
         drag[i] = 1.2f;
+        glow[i] = 0f;
         rx[i] = (float) (Math.random() * 6.28);
         ry[i] = (float) (Math.random() * 6.28);
         rvx[i] = (float) (Math.random() * 10 - 5);
         rvy[i] = (float) (Math.random() * 10 - 5);
         shrink[i] = true;
         return i;
+    }
+
+    // tweaks for a particle just spawned
+    public void glow(int i, float flash) {
+        glow[i] = flash;
+    }
+
+    /** The color drifts to this one over the particle's life. */
+    public void fade(int i, int toColor) {
+        endColor[i] = toColor;
+    }
+
+    public void drag(int i, float d) {
+        drag[i] = d;
+    }
+
+    public void spin(int i, float pitchRate, float yawRate) {
+        rvx[i] = pitchRate;
+        rvy[i] = yawRate;
+    }
+
+    public void orient(int i, float pitch, float yaw) {
+        rx[i] = pitch;
+        ry[i] = yaw;
     }
 
     public void confetti(float px, float py, float pz, int count, float power) {
@@ -79,6 +108,13 @@ public final class Particles {
         shrink[i] = false;
     }
 
+    /** A twinkle that pops up, spins and vanishes. */
+    public void sparkle(float px, float py, float pz, float sz, int col) {
+        int i = spawn(SPARKLE, px, py, pz, 0, 0.6f, 0, sz, 0.55f + (float) Math.random() * 0.3f, col, 0f);
+        rvx[i] = 4f;
+        glow[i] = 0.45f;
+    }
+
     public void update(float dt) {
         for (int i = 0; i < MAX; i++) {
             if (life[i] <= 0) continue;
@@ -101,21 +137,46 @@ public final class Particles {
             if (life[i] <= 0) continue;
             float t = life[i] / maxLife[i];
             float s = size[i];
-            if (shrink[i]) s *= Math.min(1f, t * 3f);
+            int tp = type[i];
+            if (tp == SPARKLE) s *= (float) Math.sin(Math.min(1f, t) * Math.PI);
+            else if (shrink[i]) s *= Math.min(1f, t * 3f);
             else s *= 0.6f + (1f - t) * 0.8f;
             Mesh m;
-            switch (type[i]) {
+            switch (tp) {
                 case BALL: m = art.ball; break;
                 case STAR: m = art.star; break;
                 case BONK: m = art.bonk; break;
+                case HEART: m = art.heart; break;
+                case BOLT: m = art.bolt; break;
+                case COIN: m = art.coin; break;
+                case BUBBLE: m = art.bubble; break;
+                case SPARKLE: m = art.sparkle; break;
                 default: m = art.cube; break;
             }
-            if (type[i] == BONK) {
-                M4.trs(mtx, x[i], y[i], z[i], 0, 0.9f, ry[i], s, s, s);
-            } else {
-                M4.trs(mtx, x[i], y[i], z[i], ry[i], rx[i], 0, s, s, s);
+            switch (tp) {
+                case BONK:
+                    M4.trs(mtx, x[i], y[i], z[i], 0, 0.9f, ry[i], s, s, s);
+                    break;
+                case HEART:
+                    M4.trs(mtx, x[i], y[i], z[i], faceYaw, 0, (float) Math.sin(rx[i]) * 0.35f, s, s, s);
+                    break;
+                case BOLT:
+                case SPARKLE:
+                    M4.trs(mtx, x[i], y[i], z[i], faceYaw, 0, rx[i], s, s, s);
+                    break;
+                case BUBBLE:
+                    M4.trs(mtx, x[i], y[i], z[i], faceYaw, 0, 0, s, s, s);
+                    break;
+                case COIN:
+                    M4.trs(mtx, x[i], y[i], z[i], ry[i], 0, 0, s, s, s);
+                    break;
+                default:
+                    M4.trs(mtx, x[i], y[i], z[i], ry[i], rx[i], 0, s, s, s);
+                    break;
             }
-            r.draw(m, mtx, color[i], color[i], type[i] == BONK ? 0.15f : 0f);
+            int c = color[i];
+            if (endColor[i] != c) c = Palette.mix(endColor[i], c, t);
+            r.draw(m, mtx, c, c, tp == BONK ? 0.15f : glow[i]);
         }
     }
 

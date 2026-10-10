@@ -50,11 +50,14 @@ public final class Game {
     public void onSurfaceCreated() {
         if (!created) {
             r = new Renderer(gl);
+            Skies.invalidate(); // a relaunch in the same process gets a fresh renderer
             Font[] fonts = Font.parse(platform.loadText("font.txt"));
             b = new UIBatch(gl, fonts, platform.loadImage("font.png"));
             ui = new UI(b, input);
             save = new Save(platform);
             save.load();
+            Progress.refresh(save); // pays out levels earned by older profiles
+            save.flush();
             sfx = new Sfx(this);
             ui.onClick = new Runnable() {
                 public void run() {
@@ -134,6 +137,7 @@ public final class Game {
         gl.glViewport(0, 0, width, height);
         gl.glClearColor(0.4f, 0.3f, 0.7f, 1f);
         gl.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT);
+        Skies.apply(r, screen.skyId());
         r.drawSky();
         worldBegun = false;
         if (screen.render3d()) {
@@ -142,6 +146,7 @@ public final class Game {
         }
         b.begin();
         screen.ui(dt);
+        drawNotes(dt);
         if (fadeT > 0f) drawTransition();
         b.end();
         ui.endFrame();
@@ -176,9 +181,54 @@ public final class Game {
         }
         if (t > 0.7f) {
             b.alpha((t - 0.7f) / 0.3f);
-            b.textShadow(b.title, "GO!", b.width / 2, b.height / 2, 120, 0xFFFFE14D, UIBatch.CENTER, 0xFF2A1840, 12, 10, 0x80200040);
+            b.textShadow(b.title, "GO!", b.width / 2, b.height / 2, 120, 0xFF34D058, UIBatch.CENTER, 0xFF2A1840, 12, 10, 0x80200040);
             b.alpha(1f);
         }
+    }
+
+    private Progress.Note note;
+    private float noteT;
+
+    /** Level-up / achievement / unlock pop-ups, one at a time, on top of every screen (screens may hold them back). */
+    private void drawNotes(float dt) {
+        if (!screen.allowNotes()) {
+            if (note != null) {
+                // show it again from the start once the screen allows it
+                Progress.notes.add(0, note);
+                note = null;
+            }
+            return;
+        }
+        if (note == null) {
+            if (Progress.notes.isEmpty()) return;
+            note = Progress.notes.remove(0);
+            noteT = 0f;
+            sfx.play(note.kind == Progress.Note.LEVEL ? Sfx.UNLOCK : Sfx.COIN, 0.8f, note.kind == Progress.Note.ACHIEVEMENT ? 1.3f : 1f);
+        }
+        noteT += dt;
+        float dur = 2.4f;
+        float k = noteT < 0.3f ? com.gogogo.game.engine.Ease.outBack(noteT / 0.3f) : (noteT > dur - 0.3f ? Math.max(0f, (dur - noteT) / 0.3f) : 1f);
+        float w = 580, h = 92;
+        float x = b.width / 2, y = safeTop + 10 + h / 2 - (1f - k) * (h + 40);
+        int col = note.kind == Progress.Note.LEVEL ? 0xFF34D058 : (note.kind == Progress.Note.ACHIEVEMENT ? 0xFFFF9A2B : 0xFF8E62FF);
+        b.shadow(x - w / 2, y - h / 2 + 8, w, h, 30, 0x50200040, 12);
+        b.shape(x, y, w, h, 30, col, 0xFFFFFFFF, 5f, 0.25f, 0, 0);
+        // icon bubble on the left
+        float ix = x - w / 2 + 52, wob = (float) Math.sin(noteT * 9f) * 0.12f * Math.max(0f, 1f - noteT);
+        b.circle(ix, y + 4, 36, 0x30200040);
+        b.circle(ix, y, 36, 0xFFFFFFFF);
+        if (note.kind == Progress.Note.LEVEL) {
+            b.shape(ix, y, 62, 62, 31, 0xFF34D058, 0, 0, 0.4f, 0, 0);
+            ui.star(ix, y, 26 * (1f + wob), 0xFFFFE14D);
+        } else if (note.kind == Progress.Note.ACHIEVEMENT) {
+            ui.medal(ix, y - 5, 20 * (1f + wob), 0xFFFFB321);
+        } else {
+            ui.gift(ix, y + 3, 50 * (1f + wob), 0xFF8E62FF, 0xFFFFE14D);
+        }
+        float tx = x + 40, tw = w - 130;
+        b.textFit(b.title, note.title, tx, y - 18, 32f, tw, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 4f);
+        b.textFit(b.body, note.sub, tx, y + 22, 27f, tw, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 3f);
+        if (noteT >= dur) note = null;
     }
 
     public void setScreen(Screen s) {

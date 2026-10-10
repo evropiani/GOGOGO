@@ -46,6 +46,13 @@ public final class Car {
     public float lastHitTime = -10f;
     public int bonks;
     public int roundsSurvived;
+    /** Boosts used and last-moment saves this match (player stats). */
+    public int boosts, clutches;
+    /** Round timer value when the car last rolled onto the target color (-1 = not on it). */
+    public float safeAt = -1f;
+    public boolean onTarget;
+    /** Boost trail style (see Trails). */
+    public int trail;
     public boolean god;
     public boolean aliveAtRoundStart = true;
 
@@ -83,6 +90,8 @@ public final class Car {
     /** Physics for one fixed step. Returns true if the car just lost its footing. */
     public boolean step(Arena arena, float dt, boolean canDrive) {
         if (falling) {
+            justBoosted = false;
+            wantBoost = false;
             fallT += dt;
             vy -= Arena.GRAVITY * dt;
             y += vy * dt;

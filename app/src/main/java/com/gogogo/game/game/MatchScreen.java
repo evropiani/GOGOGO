@@ -49,6 +49,8 @@ public final class MatchScreen extends Screen {
     private boolean usedGas;
 
     private static final String[] SAFE_WORDS = {"SAFE!", "PHEW!", "NICE!", "CLUTCH!", "COZY!"};
+    /** Start light colors: red, yellow, green. */
+    static final int[] LIGHT_COLORS = {0xFFFF3B3B, 0xFFFFD21F, 0xFF34D058};
 
     public MatchScreen(Game game) {
         super(game);
@@ -64,8 +66,13 @@ public final class MatchScreen extends Screen {
             if (s.devFlags[Cheats.FEW]) opt.bots = 9;
             opt.autopilot = s.devFlags[Cheats.AUTO];
         }
-        match = new Match(System.nanoTime(), opt, s);
+        long seed = System.nanoTime();
+        opt.map = Maps.pick(s, new com.gogogo.game.engine.Rng(seed ^ 0x5EEDL));
+        Themes.apply(s.theme);
+        match = new Match(seed, opt, s);
         view = new MatchView(game, match);
+        view.skin = s.skin;
+        view.sky = s.sky;
         final Match.Listener inner = view;
         match.listener = new Match.Listener() {
             public void event(int type, Car a, Car b, float v) {
@@ -77,6 +84,19 @@ public final class MatchScreen extends Screen {
 
     public void enter() {
         game.sfx.music(Sfx.MUSIC_GAME);
+    }
+
+    public int skyId() {
+        return view.sky;
+    }
+
+    public boolean allowNotes() {
+        return false;
+    }
+
+    /** The map this match is played on (see Maps). */
+    public int mapId() {
+        return opt.map;
     }
 
     // ------------------------------------------------------------------ events → HUD
@@ -92,12 +112,17 @@ public final class MatchScreen extends Screen {
         Sfx s = game.sfx;
         switch (type) {
             case Match.EV_COUNT:
-                if (v > 0) {
-                    announce(String.valueOf((int) v), 0xFFFFFFFF, 0.8f);
-                    s.play(Sfx.BEEP, 0.9f, 1f);
+                // start lights: red GO!, yellow GO!, green GO! with the announcer shouting along
+                if (v == 3) {
+                    announce("GO!", LIGHT_COLORS[0], 0.8f);
+                    s.play(Sfx.VOICE_GO1, 1f, 1f);
+                } else if (v == 2) {
+                    announce("GO!", LIGHT_COLORS[1], 0.8f);
+                    s.play(Sfx.VOICE_GO2, 1f, 1f);
                 } else {
-                    announce("GO!", 0xFF5EE65A, 0.9f);
-                    s.play(Sfx.GO, 1f, 1f);
+                    announce("GO!", LIGHT_COLORS[2], 1.0f);
+                    s.play(Sfx.VOICE_GO3, 1f, 1f);
+                    s.play(Sfx.GO, 0.5f, 1f);
                     game.vibrate(30);
                 }
                 break;
@@ -133,6 +158,7 @@ public final class MatchScreen extends Screen {
                 break;
             case Match.EV_WIN:
                 overT = 0;
+                match.hoodWin = a == match.player && game.save.camMode == 2;
                 if (a == match.player) {
                     announce("YOU WIN!", 0xFFFFE14D, 3f);
                     s.play(Sfx.WIN, 1f, 1f);
@@ -418,7 +444,11 @@ public final class MatchScreen extends Screen {
         view.drawPopups(b);
         if (view.hoodCar == null || view.hoodCar != match.player) drawNameTags(b);
 
-        if (!paused) drawBanner(b, W, top);
+        if (!paused) {
+            drawLights(b, W, top, false);
+            drawBanner(b, W, top);
+            drawLights(b, W, top, true);
+        }
 
         // pause + alive counter (top left)
         if (!paused && match.phase != Match.OVER) {
@@ -446,15 +476,16 @@ public final class MatchScreen extends Screen {
                 b.shape(W / 2, hy, hw, 140, 40, 0xD02A1840, 0, 0, 0, 0, 0);
                 b.textFit(b.title, "GET ON THE COLOR SHOWN UP TOP", W / 2, hy - 26, 38f, hw - 40, 0xFFFFE14D, UIBatch.CENTER, 0, 0);
                 b.textFit(b.body, "before the timer runs out. Last car standing wins!", W / 2, hy + 30, 30f, hw - 40, 0xFFFFFFFF, UIBatch.CENTER, 0, 0);
-            } else if (match.round <= 1 && !usedGas) {
-                b.alpha(0.6f + (float) Math.sin(game.time * 4f) * 0.3f);
+            } else if (match.round <= 1 && !usedGas && lightsShown < 1f) {
+                // the start light hangs here during the intro; the hint fades in once it has gone
+                b.alpha((0.6f + (float) Math.sin(game.time * 4f) * 0.3f) * (1f - lightsShown));
                 b.text(b.body, "ARROWS TO STEER  -  HOLD GAS TO GO", W / 2, top + 178, 28f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 4f);
                 b.alpha(1f);
             }
         }
 
         // camera button + menu (top right), drawn over the controls
-        if (!paused) drawCameraButton(b, ui, W, top, right);
+        if (!paused && match.phase != Match.OVER) drawCameraButton(b, ui, W, top, right);
 
         // big announcement
         if (bigText != null) {
@@ -579,6 +610,68 @@ public final class MatchScreen extends Screen {
         b.shape(W / 2, H + e / 2, W + 200, e * 3, 0, c, 0, 0, 0, 60f, 0);
         b.shape(-e / 2, H / 2, e * 3, H + 200, 0, c, 0, 0, 0, 60f, 0);
         b.shape(W + e / 2, H / 2, e * 3, H + 200, 0, c, 0, 0, 0, 60f, 0);
+    }
+
+    private float lightsShown; // 0..1 how much of the start light is on screen (the steering hint waits for it)
+
+    /**
+     * Cartoon traffic light under the banner: drops in for the intro and counts red, yellow, green.
+     * Drawn twice per frame: behind the banner while it drops in (front = false), and in front of the
+     * round timer for the moment after GO while it fades out (front = true).
+     */
+    private void drawLights(UIBatch b, float W, float top, boolean front) {
+        float since; // seconds since GO, or -1 before it
+        if (match.phase == Match.INTRO) since = -1f;
+        else if (match.round == 1 && match.phase == Match.SHOW && match.phaseT < 0.6f) since = match.phaseT;
+        else {
+            lightsShown = 0f;
+            return;
+        }
+        if (front != (since >= 0)) return;
+        float t = since < 0 ? match.phaseT : Match.INTRO_TIME + since;
+        int lit = t >= Match.INTRO_TIME ? 2 : (t >= Match.LIGHT_YELLOW ? 1 : (t >= Match.LIGHT_RED ? 0 : -1));
+        float litAt = lit == 2 ? Match.INTRO_TIME : (lit == 1 ? Match.LIGHT_YELLOW : Match.LIGHT_RED);
+        float pop = lit >= 0 ? Math.max(0f, 1f - (t - litAt) / 0.35f) : 0f; // 1 the moment a lamp switches on
+        float drop = Ease.outBack(Math.min(1f, t / 0.45f));
+        float away = since > 0.25f ? Ease.inCubic(Math.min(1f, (since - 0.25f) / 0.33f)) : 0f;
+        lightsShown = 1f - away;
+        float sc = 1f + 0.12f * away; // puffs out as it fades
+        float r = 30f * sc, gap = 82f * sc, hw = 3 * gap + 18f * sc, hh = 2 * r + 28f * sc;
+        float cx = W / 2 + (float) Math.sin(t * 45f) * 4f * pop * pop;
+        float cy = top + 100 + 44 - (1f - drop) * 100f;
+        b.alpha(Math.min(1f, t * 6f) * (1f - away));
+        int body = 0xFF2A1840;
+        if (!front) {
+            // straps up behind the banner
+            b.roundRect(cx - 70 - 7, cy - hh / 2 - 44, 14, 52, 5, UI.shade(body, 0.75f));
+            b.roundRect(cx + 70 - 7, cy - hh / 2 - 44, 14, 52, 5, UI.shade(body, 0.75f));
+        }
+        b.shadow(cx - hw / 2, cy - hh / 2 + 10, hw, hh, hh / 2, 0x60200040, 12);
+        b.shape(cx, cy + 7, hw, hh, 28 * sc, 0xFF140A24, 0, 0, 0, 0, 0);
+        b.shape(cx, cy, hw, hh, 28 * sc, body, 0xFFFFFFFF, 5f, 0.3f, 0, 0);
+        for (int i = 0; i < 3; i++) {
+            float lx = cx + (i - 1) * gap;
+            // sunken socket under a little hood
+            b.circle(lx, cy - 4, r + 9, 0xFF46316A);
+            b.circle(lx, cy + 2, r + 7, 0xFF140A24);
+            if (i == lit) continue;
+            b.circle(lx, cy + 3, r, UI.shade(LIGHT_COLORS[i], 0.3f));
+            b.shape(lx - r * 0.3f, cy - r * 0.2f, r * 0.6f, r * 0.34f, r * 0.17f, 0x30FFFFFF, 0, 0, 0, 1f, -0.5f);
+        }
+        if (lit >= 0) {
+            float lx = cx + (lit - 1) * gap, ly = cy + 3;
+            int col = LIGHT_COLORS[lit];
+            float s = 1f + 0.3f * pop * pop;
+            float g = r * (1.9f + 0.8f * pop);
+            b.shape(lx, ly, g * 2, g * 2, g, UIBatch.withAlpha(col, 0.55f), 0, 0, 0, 30f, 0);
+            b.shape(lx, ly, r * 2 * s, r * 2 * s, r * s, UI.shade(col, 1.12f), UI.shade(col, 1.5f), 4f, 0.35f, 0, 0);
+            b.shape(lx - r * 0.3f * s, ly - r * 0.34f * s, r * 0.78f * s, r * 0.42f * s, r * 0.21f * s, 0xC8FFFFFF, 0, 0, 0, 1.5f, -0.5f);
+            if (pop > 0) {
+                float rr = r * (1.15f + (1f - pop) * 1.5f);
+                b.shape(lx, ly, rr * 2, rr * 2, rr, 0, UIBatch.withAlpha(0xFFFFFFFF, pop), 6f * pop + 1f, 0, 0, 0);
+            }
+        }
+        b.alpha(1f);
     }
 
     private void drawBanner(UIBatch b, float W, float top) {

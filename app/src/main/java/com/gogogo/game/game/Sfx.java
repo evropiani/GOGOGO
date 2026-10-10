@@ -4,11 +4,13 @@ package com.gogogo.game.game;
 public final class Sfx {
     public static final int CLICK = 0, BUY = 1, NOPE = 2, BEEP = 3, GO = 4, TICK = 5, DROP = 6, LAND = 7,
             BUMP = 8, BONK = 9, BOOST = 10, FALL = 11, POP = 12, WIN = 13, LOSE = 14, COIN = 15,
-            QUACK = 16, UNLOCK = 17, WHOOSH = 18, HONK = 19;
+            QUACK = 16, UNLOCK = 17, WHOOSH = 18, HONK = 19,
+            VOICE_GO1 = 20, VOICE_GO2 = 21, VOICE_GO3 = 22; // announcer: "GO!", "GO!", "GOOOOOO!"
     private static final String[] FILES = {
             "click", "buy", "nope", "beep", "go", "tick", "drop", "land",
             "bump", "bonk", "boost", "fall", "pop", "win", "lose", "coin",
-            "quack", "unlock", "whoosh", "honk"};
+            "quack", "unlock", "whoosh", "honk",
+            "voice_go1", "voice_go2", "voice_go3"};
 
     public static final String MUSIC_MENU = "sfx/music_menu.ogg";
     public static final String MUSIC_GAME = "sfx/music_game.ogg";

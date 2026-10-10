@@ -59,9 +59,11 @@ public final class Bot {
             }
             if (thinkT > 0) {
                 thinkT -= dt;
-                // drift a little while "thinking"
-                c.inX = (float) Math.sin(wobble * 1.3f) * 0.15f;
-                c.inZ = (float) Math.cos(wobble * 1.1f) * 0.15f;
+                // drift a little while "thinking" (but not off the floor)
+                float wx = (float) Math.sin(wobble * 1.3f) * 0.15f, wz = (float) Math.cos(wobble * 1.1f) * 0.15f;
+                if (!a.hasAt(c.x + wx * 20f, c.z + wz * 20f)) wx = wz = 0f;
+                c.inX = wx;
+                c.inZ = wz;
                 return;
             }
             if (goal == null || goal.state != Arena.PRESENT) pickGoal(m, c);
@@ -84,7 +86,7 @@ public final class Bot {
                 seekVictim(m, c, here);
                 if (victim >= 0) return;
             }
-            steerTo(m, c, goal, true);
+            steerTo(m, c, goal, true, dt);
         } else {
             // islands only: stay central, maybe shove someone
             Arena.Tile here = a.cellAt(c.x, c.z);
@@ -93,7 +95,7 @@ public final class Bot {
                     seekVictim(m, c, here);
                     if (victim >= 0) return;
                 }
-                steerTo(m, c, here, false);
+                steerTo(m, c, here, false, dt);
             } else {
                 c.inX = c.inZ = 0;
             }
@@ -126,18 +128,21 @@ public final class Bot {
             float tx = v.x - px / pl * 1.2f, tz = v.z - pz / pl * 1.2f;
             float dx = tx - c.x, dz = tz - c.z;
             float d = (float) Math.sqrt(dx * dx + dz * dz) + 0.001f;
-            if (d < 1.4f) {
+            boolean close = d < 1.4f;
+            if (close) {
                 dx = v.x - c.x;
                 dz = v.z - c.z;
                 d = (float) Math.sqrt(dx * dx + dz * dz) + 0.001f;
-                if (c.boostCd <= 0 && m.rng.chance(0.08f)) c.wantBoost = true;
             }
             c.inX = dx / d;
             c.inZ = dz / d;
-            // don't ram yourself off the edge
+            // don't ram yourself off the edge, and only boost into someone with floor behind them
             float ex = c.x + c.inX * 2.5f, ez = c.z + c.inZ * 2.5f;
             if (m.arena.cellAt(ex, ez) != here) {
                 victim = -1;
+            } else if (close && c.boostCd <= 0 && m.rng.chance(0.08f)
+                    && m.arena.clearLine(c.x, c.z, c.x + c.inX * 7f, c.z + c.inZ * 7f, 0.5f)) {
+                c.wantBoost = true;
             }
         }
     }
@@ -157,13 +162,21 @@ public final class Bot {
             // goofy: chase some other color nearby
             want = (m.target + 1 + m.rng.i(Math.max(1, m.numColors - 1))) % m.numColors;
         }
+        // on maps with holes, tiles across a gap are farther than they look
+        Arena.Tile here = a.full ? null : a.cellAt(c.x, c.z);
+        if (here != null && !here.exists) here = null;
         for (Arena.Tile t : a.tiles) {
             if (t.state != Arena.PRESENT || t.color != want) continue;
             float dx = t.x - c.x, dz = t.z - c.z;
             float d = (float) Math.sqrt(dx * dx + dz * dz);
+            if (here != null) {
+                int s = a.steps(t.index, here.index); // one search from here serves every tile
+                if (s < 0) continue;
+                d += (s - Math.abs(t.gx - here.gx) - Math.abs(t.gz - here.gz)) * Arena.PITCH;
+            }
             float score = d + t.crowd * (1.5f + 3f * smarts);
-            // avoid border tiles a bit
-            if (t.gx == 0 || t.gz == 0 || t.gx == a.n - 1 || t.gz == a.n - 1) score += 2f * smarts;
+            // avoid tiles at the map's outline or next to a hole a bit
+            if (t.edge) score += 2f * smarts;
             if (score < bestScore) {
                 bestScore = score;
                 best = t;
@@ -178,12 +191,80 @@ public final class Bot {
 
     private float aim, aim2;
 
-    private void steerTo(Match m, Car c, Arena.Tile t, boolean rush) {
+    // path following around the empty cells of a map
+    private static final float MARGIN = 1.1f; // keep the car's middle this far from empty cells
+    private int wayCell = -1;                 // tile to drive at first, -1 = straight at the goal
+    private int wayFrom = -1, wayGoal = -1;   // car cell and goal the waypoint was found for
+    private float wayT;                       // seconds until the waypoint is looked at again
+
+    /**
+     * Where to drive on the way to tile t: -1 = straight at (gx, gz), else the farthest tile along
+     * the walk around the holes that the car can reach in a straight line.
+     */
+    private int route(Arena a, Car c, Arena.Tile t, float gx, float gz, float dt) {
+        if (a.full) return -1;
+        Arena.Tile here = a.cellAt(c.x, c.z);
+        if (here == null || !here.exists || here == t) return -1;
+        wayT -= dt;
+        if (here.index == wayFrom && t.index == wayGoal && wayT > 0) return wayCell;
+        wayFrom = here.index;
+        wayGoal = t.index;
+        wayT = 0.25f;
+        wayCell = -1;
+        if (a.clearLine(c.x, c.z, gx, gz, MARGIN)) return -1;
+        int best = a.nextStep(here.index, t.index);
+        if (best < 0 || best == t.index) return -1;
+        // pull the string: skip ahead while the next tile is still in clear sight
+        int cur = best;
+        while (true) {
+            int next = a.nextStep(cur, t.index);
+            if (next < 0) break;
+            if (next == t.index) {
+                if (a.clearLine(c.x, c.z, gx, gz, MARGIN)) best = -1;
+                break;
+            }
+            Arena.Tile nt = a.tiles[next];
+            if (!a.clearLine(c.x, c.z, nt.x, nt.z, MARGIN)) break;
+            best = cur = next;
+        }
+        wayCell = best;
+        return best;
+    }
+
+    private void steerTo(Match m, Car c, Arena.Tile t, boolean rush, float dt) {
         if (t == null) {
             c.inX = c.inZ = 0;
             return;
         }
-        float gx = t.x + aim, gz = t.z + aim2;
+        float ax = aim, az = aim2;
+        if (t.edge) {
+            // park on the side away from the drop
+            Arena a = m.arena;
+            if (!a.has(t.gx - 1, t.gz)) ax = Math.abs(ax);
+            else if (!a.has(t.gx + 1, t.gz)) ax = -Math.abs(ax);
+            if (!a.has(t.gx, t.gz - 1)) az = Math.abs(az);
+            else if (!a.has(t.gx, t.gz + 1)) az = -Math.abs(az);
+        }
+        float gx = t.x + ax, gz = t.z + az;
+        int way = route(m.arena, c, t, gx, gz, dt);
+        if (way >= 0) {
+            // on the way around a hole: full speed at the waypoint, easing off only when the goal is right behind it
+            Arena.Tile w = m.arena.tiles[way];
+            float dx = w.x - c.x, dz = w.z - c.z;
+            float d = (float) Math.sqrt(dx * dx + dz * dz) + 0.001f;
+            float nx = dx / d, nz = dz / d;
+            float left = d + m.arena.steps(way, t.index) * Arena.PITCH * 0.85f;
+            float facing = (float) (Math.sin(c.yaw) * nx + Math.cos(c.yaw) * nz);
+            // a light touch still steers but hardly pushes, so the car rolls to a stop around the corner
+            float mag = left < c.speed() / 2.6f && c.vx * nx + c.vz * nz > 2f ? 0.1f : 1f;
+            c.inX = nx * mag;
+            c.inZ = nz * mag;
+            if (rush && !dumb && c.boostCd <= 0 && m.timer > 0 && d > 12f) {
+                float need = left / Math.max(4f, c.maxSpeed);
+                if (facing > 0.95f && need > m.timer * 0.75f) c.wantBoost = true;
+            }
+            return;
+        }
         float dx = gx - c.x, dz = gz - c.z;
         float d = (float) Math.sqrt(dx * dx + dz * dz);
         if (d < 0.6f) {

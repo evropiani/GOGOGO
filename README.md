@@ -15,7 +15,9 @@ A frantic, slapstick, hyper-casual party racer for Android.</p>
 
 ## How to play
 
-You and 99 other drivers spawn on a giant checkered grid of colorful tiles floating in the sky.
+You and 99 other drivers spawn on a giant grid of colorful tiles floating in the sky.
+
+Every match starts with a traffic light and an announcer: **GO!** (red), **GO!** (yellow), **GOOOOOO!** (green) — and you're off.
 
 1. The bar at the top shows a **color** (and its symbol) and a **timer**.
 2. Drive onto a tile of that color before the timer runs out.
@@ -43,11 +45,22 @@ When you're knocked out you can **watch** the rest of the match or skip to the r
 
 ## Progression
 
-* Earn **coins** every match: for showing up, rounds survived, bonks (cars you knocked out) and your final placement.
-* **Garage**: buy new cars, each with different Speed / Grip / Boost / Weight:
-  Bumper Bean, Zoomba, Taco Truck, Hot Dog, Ice Scream, Monster Cube, Rocket Toaster, Bathtub Bomber and Sofa So Good.
+* Earn **coins** and **XP** every match: for showing up, rounds survived, bonks (cars you knocked out), last-second saves and your final placement.
+* **Levels 1–100**: every level up pays coins, most unlock something new (maps, arena skins, skies, themes, trails, paints, toppers, wheels and cars) and every 5th level also gives Rims. Tap the level badge on the title screen to see the whole road to 100.
+  **Level 100** unlocks the legendary **Traffic Titan** car and the **Golden Glory** arena skin.
+* **Achievements**: 38 awards (wins, survival records, bonk counts, clutch saves, map tours, collecting, ...) that pay out XP, coins and Rims.
+* **Rims** are the premium currency: earned from levels and achievements, spent on premium cars and looks, or swapped for coins in the Rims shop. (Store packs will come with the Google Play version.)
+* **Garage**: buy cars, each with different Speed / Grip / Boost / Weight:
+  Bumper Bean, Zoomba, Taco Truck, Hot Dog, Ice Scream, Monster Cube, Rocket Toaster, Bathtub Bomber and Sofa So Good for coins,
+  Disco Dasher and Unicorn Dream for Rims, Big Cheese at level 50 and Traffic Titan at level 100.
 * **Upgrade** every stat of every car (5 levels each).
-* **Customize**: body paint, accent paint (18 colors incl. animated Rainbow), toppers (traffic cone, propeller cap, crown, shark fin, ...) and wheels (candy, donut, gold, ...).
+* **Customize**: body paint, accent paint (24 colors incl. animated Rainbow, Galaxy, Lava and Traffic), toppers (traffic cone, propeller cap, crown, wizard hat, disco ball, ...) and wheels (candy, donut, gold, pizza, flames, diamond, ...).
+* **Locker**: pick the look of your matches:
+  * **Maps** — Classic, Donut, Plus, Diamond, Swiss Cheese, Islands, Heart, Star, Bullseye and Mega Grid (or shuffle them),
+  * **Arena skins** — Classic, Candy, Cookie, Bricks, Jelly, Neon, Frosty, Pixel, Crates and Golden Glory,
+  * **Skies** — Dreamy, Blue Sky, Sunset, Starry Night, Deep Sea, Candyland, Outer Space, Volcano, Synthwave and Aurora,
+  * **Themes** (tile color palettes) — Classic, Pastel, Neon, Retro, Jewel, Sorbet and Midnight,
+  * **Boost trails** — Puff, Fire, Bubbles, Stars, Hearts, Rainbow, Lightning, Confetti, Traffic Lights and Gold Rush.
 * **Settings**: sound, music, vibration, camera shake, color symbols (for color-blind players), swap controls.
 
 ## Install
@@ -92,6 +105,7 @@ No game engine and no third-party runtime libraries — everything is custom and
 * `app/src/main/java/com/gogogo/game/game` — the game: match rules, arcade car physics with bumping, bot AI, screens.
 * `app/src/main/java/com/gogogo/game/android` — Android activity and platform services.
 * `tools/gen_font.py`, `tools/gen_icons.py`, `tools/gen_audio.py` — bake the font atlas, launcher icons, and synthesize all sound effects and music from scratch.
+* `tools/gen_voice.py` — makes the announcer's "GO! GO! GOOOOOO!" with an offline speech synthesizer and the WORLD vocoder.
 
 ### Desktop test harness
 
@@ -101,11 +115,12 @@ The engine runs unchanged on desktop OpenGL ES (via LWJGL + Mesa), which makes i
 tools/desktop/run.sh 1280 720 "wait 60; shot title.png; tap 922 310; wait 300; shot match.png"
 ```
 
-`SimTest` (in `tools/desktop`) runs headless bot-only matches to check round length and elimination pacing.
+`SimTest` (in `tools/desktop`) runs headless bot-only matches to check round length and elimination pacing, on any map (`SimTest 20 all`).
 
 ## Credits
 
 * Fonts: [Luckiest Guy](https://fonts.google.com/specimen/Luckiest+Guy) by Astigmatic (Apache 2.0) and [Lilita One](https://fonts.google.com/specimen/Lilita+One) by Juan Montoreano (SIL OFL 1.1) — see `tools/fonts/`.
+* Announcer voice: synthesized offline with [CMU Flite](http://www.festvox.org/flite/) ("awb" voice) and shaped into a shout with the [WORLD vocoder](https://github.com/mmorise/World) (pyworld) — see `tools/gen_voice.py`.
 * Everything else (models, sounds, music, code) was made for this project.
 
 ## License

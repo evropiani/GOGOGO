@@ -148,7 +148,8 @@ public final class Car {
             float st = canDrive ? Math.max(-1f, Math.min(1f, steer)) : 0f;
             float th = canDrive ? Math.max(-1f, Math.min(1f, throttle)) : 0f;
             float fwd0 = vx * fx + vz * fz;
-            float dir = fwd0 < -0.3f ? -1f : 1f;
+            // steering only flips while really reversing; a car pushed backwards still turns the way you press
+            float dir = th < 0 && fwd0 < -0.3f ? -1f : 1f;
             float rate = manualTurn * Math.min(1f, 0.35f + Math.abs(fwd0) / 6f);
             // steering right turns clockwise seen from above (yaw decreases)
             yawRate = -st * rate * dir;

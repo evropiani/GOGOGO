@@ -948,8 +948,8 @@ public final class MatchScreen extends Screen {
         float px = W / 2 - pw / 2, py = H / 2 - ph / 2;
         ui.panel(px, py, pw, ph, 0xFFFFFFFF);
         b.text(b.title, "PAUSED", W / 2, py + 64, 72f, 0xFF8E62FF, UIBatch.CENTER, 0xFF2A1840, 6f);
-        if (ui.button("resume", px + 40, py + 130, 330, 120, 0xFF34D058, "RESUME", 56f)) paused = false;
-        if (ui.button("quit", px + 390, py + 130, 330, 120, 0xFFFF4FA3, "GIVE UP", 50f)) {
+        if (ui.button("resume", px + 390, py + 130, 330, 120, 0xFF34D058, "RESUME", 56f)) paused = false;
+        if (ui.button("quit", px + 40, py + 130, 330, 120, 0xFFFF4FA3, "GIVE UP", 50f)) {
             paused = false;
             finish(true);
         }

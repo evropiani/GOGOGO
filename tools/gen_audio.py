@@ -385,11 +385,43 @@ def fx_boom():
     return np.tanh(mix(low * 1.3, blast * 0.9, click * 0.6) * 1.4)
 
 
+def fx_nitro():
+    # nitro kicking in: a gassy hiss, a whump of fire and an engine winding up under a rising whoosh
+    d = 0.9
+    hiss = noise(0.25)
+    hiss = (hiss - lowpass(hiss, 3000)) * env(0.25, 0.005, 0.05, 0.6, 0.12) * 0.5
+    whump = sine(expsweep(120, 48, 0.4), 0.4) * decay(0.4, 9)
+    fire = lowpass(noise(d), expsweep(600, 5000, d)) * env(d, 0.06, 0.2, 0.7, 0.4)
+    f = expsweep(90, 260, d)
+    eng = lowpass(saw(f, d) + saw(f * 1.012, d), 2200) * env(d, 0.08, 0.2, 0.7, 0.35)
+    return np.tanh(mix(hiss, at(whump * 1.2, 0.08), at(fire * 0.8, 0.08), at(eng * 0.6, 0.1)) * 1.3)
+
+
+def fx_nitro_roar():
+    # five seconds of afterburner: a growling engine on a rushing flame with crackles, fading out at the end
+    d = 5.0
+    n = int(SR * d)
+    t = np.linspace(0, 1, n)
+    f = 82 + 38 * t ** 0.5 + 3 * np.sin(2 * np.pi * 5.5 * t * d)
+    eng = saw(f, d) + 0.6 * saw(f * 1.5, d) + 0.5 * square(f * 0.5, d, 0.4)
+    eng = lowpass(eng, 1300) * (0.8 + 0.2 * np.sin(2 * np.pi * 27 * t * d))
+    rush = noise(d)
+    rush = lowpass(rush, 3200) - lowpass(rush, 400)
+    pops = (rng.uniform(0, 1, n) < 0.0015).astype(np.float64)
+    pops = lowpass(pops, 900) * 30 * lowpass(noise(d), 2500)
+    e = env(d, 0.04, 0.3, 0.85, 0.7)
+    return np.tanh((eng * 0.6 + rush * 0.7 + pops * 0.4) * e * 1.2)
+
+
 def power_effects():
     return {
         "pickup": fx_pickup, "throw": fx_throw, "splat": fx_splat, "freeze": fx_freeze, "spring": fx_spring,
         "thud": fx_thud, "goo": fx_goo, "boom": fx_boom,
     }
+
+
+def nitro_effects():
+    return {"nitro": fx_nitro, "nitro_roar": fx_nitro_roar}
 
 
 # ------------------------------------------------------------------ music
@@ -496,6 +528,9 @@ def main():
 
     # made after the music, so adding them changed none of the sounds above
     for name, fn in power_effects().items():
+        save(name, fn())
+        print("sfx", name)
+    for name, fn in nitro_effects().items():
         save(name, fn())
         print("sfx", name)
 

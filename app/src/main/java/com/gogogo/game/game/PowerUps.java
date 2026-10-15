@@ -40,7 +40,7 @@ public final class PowerUps {
      * Nitro: seconds it lasts, top speed and acceleration multipliers while it burns, the kick forward when it fires,
      * and how much of the BUMP top speed bonus is left on top of it.
      */
-    public static final float NITRO_TIME = 5f, NITRO_SPEED = 1.45f, NITRO_ACCEL = 1.7f, NITRO_KICK = 7f, NITRO_BUMP_CAP = 1.3f;
+    public static final float NITRO_TIME = 5f, NITRO_SPEED = 1.4f, NITRO_ACCEL = 1.6f, NITRO_KICK = 7f, NITRO_BUMP_CAP = 1.3f;
     /** Seconds a car hit by a power-up keeps less grip (so the push carries). */
     public static final float SLIP_TIME = 0.4f;
     /** Distance at which a car grabs a pickup. */

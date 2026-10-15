@@ -202,7 +202,11 @@ public final class DesktopLauncher implements Platform {
         return 0;
     }
 
-    public void playSound(int handle, float volume, float pitch) {
+    public int playSound(int handle, float volume, float pitch) {
+        return 0;
+    }
+
+    public void stopSound(int stream) {
     }
 
     public void playMusic(String path, float volume) {

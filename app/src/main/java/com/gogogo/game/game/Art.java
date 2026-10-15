@@ -1098,6 +1098,20 @@ public final class Art {
     public Mesh goo;
     /** Thin flat ring of radius 1 (PRIMARY tints): shockwaves. */
     public Mesh wave;
+    /**
+     * Exhaust flame of a nitro, nozzle at the origin, one unit long towards -z: the hot part near the nozzle takes
+     * the SECONDARY tint, the rest the PRIMARY one.
+     */
+    public Mesh flame;
+    /** How far each car body reaches backwards (most negative z): where the nitro flames come out. */
+    public final float[] carBack = new float[Cars.ALL.length];
+
+    private static float rearmost(Mesh body) {
+        float back = 0f;
+        float[] v = body.vertices;
+        for (int k = 0; k < v.length; k += Mesh.VERTEX_FLOATS) back = Math.min(back, v[k + 2]);
+        return back;
+    }
 
     private void buildPowerUps(Renderer r) {
         MeshBuilder m;
@@ -1134,6 +1148,13 @@ public final class Art {
         m = new MeshBuilder();
         m.paint(1f).torus(0, 0, 0, 1f, 0.045f, 48, 6);
         wave = r.register(m.build());
+
+        m = new MeshBuilder();
+        m.rotateX(-PI / 2); // lathe axis y -> -z
+        m.accent(1f).lathe(new float[]{0, -0.05f, 0.2f, 0f, 0.26f, 0.14f, 0.24f, 0.3f}, 10);
+        m.paint(1f).lathe(new float[]{0.24f, 0.3f, 0.2f, 0.46f, 0.12f, 0.72f, 0, 1f}, 10);
+        flame = r.register(m.build());
+        for (int i = 0; i < cars.length; i++) carBack[i] = rearmost(cars[i]);
     }
 
     private static void buildPowerIcon(MeshBuilder m, int type) {
@@ -1167,6 +1188,18 @@ public final class Art {
                 m.fixed(0xD05CFF).cone(0, 0.1f, 0, 0.31f, 0f, 0.5f, 14);
                 m.fixed(0xF6D2FF).ellipsoid(-0.15f, 0.02f, 0.29f, 0.08f, 0.14f, 0.06f, 8);
                 m.fixed(0xF6D2FF).sphere(-0.2f, -0.2f, 0.27f, 0.05f, 6);
+                break;
+            case PowerUps.NITRO: // a nitro bottle, leaning a bit
+                m.push().rotateZ(-0.3f);
+                m.fixed(0xFF3A4A).cylinder(0, -0.52f, 0, 0.27f, 0, 0.72f, 0.1f, 16);
+                m.fixed(0xFF3A4A).ellipsoid(0, 0.2f, 0, 0.27f, 0.17f, 0.27f, 14);
+                m.fixed(0xFFFFFF).cylinder(0, -0.22f, 0, 0.285f, 0, 0.11f, 0.02f, 16);
+                m.fixed(0xFFFFFF).cylinder(0, -0.03f, 0, 0.285f, 0, 0.05f, 0.01f, 16);
+                m.fixed(0xB8203A).cylinder(0, -0.52f, 0, 0.285f, 0, 0.08f, 0.03f, 16);
+                m.fixed(0xC8CCD8).cylinder(0, 0.3f, 0, 0.09f, 0, 0.2f, 0.02f, 10);
+                m.fixed(0xE8ECF4).box(0, 0.53f, 0, 0.34f, 0.08f, 0.1f, 0.03f);
+                m.fixed(0xFFD23B).sphere(0, 0.53f, 0, 0.07f, 8);
+                m.pop();
                 break;
             default: // super bump: a spiky burst
                 m.push().rotateX(PI / 2);

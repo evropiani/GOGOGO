@@ -257,6 +257,7 @@ public final class MatchView implements Match.Listener {
         if (c == hoodCar) marker = false;
 
         if (c.frozenT > 0) drawIce(r, art, c, c == hoodCar);
+        if (c.nitroT > 0 && (c == hoodCar || isNear(c.x, c.z, 45f))) drawNitro(r, art, c, c == hoodCar);
         if (c.power >= 0 && c != hoodCar && !c.falling) drawHeld(r, art, c);
 
         // shadow on the floor (in a super jump it stays, so you can see where you come down)
@@ -431,6 +432,26 @@ public final class MatchView implements Match.Listener {
                 if (near) s.play(Sfx.GOO, vol, 1f);
                 if (me && !quiet) pop("STICKY!", a.x, 3.4f, a.z, 0xFFE09AFF);
                 break;
+            case PowerUps.NITRO: {
+                // a burst of fire out of the back and a ring behind the car
+                float bx = a.x - fx0 * 1.8f, bz = a.z - fz0 * 1.8f;
+                for (int k = 0; k < 12; k++) {
+                    int i = fx.spawn(Particles.BALL, bx + rnd(0.4f), a.y + 0.6f + rnd(0.3f), bz + rnd(0.4f), -fx0 * 7f + rnd(2.5f),
+                            1f + (float) Math.random() * 2f, -fz0 * 7f + rnd(2.5f), 0.35f + (float) Math.random() * 0.3f,
+                            0.35f + (float) Math.random() * 0.25f, NITRO_CORE, -1.5f);
+                    fx.fade(i, 0xFF2A0A);
+                    fx.glow(i, 0.25f);
+                    fx.drag(i, 3f);
+                }
+                wave(bx, a.y + 0.5f, bz, 2.6f, 0.3f, PowerUps.COLOR[PowerUps.NITRO]);
+                if (near) s.play(Sfx.NITRO, vol, 0.95f + (float) Math.random() * 0.1f);
+                if (me && !quiet) {
+                    pop("VROOOM!", a.x, 3.4f, a.z, 0xFFFF6A5A);
+                    game.vibrate(45);
+                    game.shake(0.35f, 0.3f);
+                }
+                break;
+            }
             default: {
                 float rr = PowerUps.SHOCK_RADIUS;
                 wave(a.x, a.y + 0.2f, a.z, rr, 0.45f, PowerUps.COLOR[PowerUps.SUPER_BUMP]);
@@ -501,6 +522,18 @@ public final class MatchView implements Match.Listener {
                     fx.sparkle(wx, c.y + 0.5f, wz, 0.3f, 0xF6D2FF);
                 }
             }
+            if (c.nitroT > 0 && c != hoodCar && Math.random() < 0.7 && isNear(c.x, c.z, 40f)) {
+                // fire licking out of the exhaust
+                float fx0 = (float) Math.sin(c.yaw), fz0 = (float) Math.cos(c.yaw);
+                float back = game.art.carBack[c.def.id] - 0.5f;
+                float side = (Math.random() < 0.5 ? -1f : 1f) * Math.max(0.25f, c.def.wheelX * 0.42f);
+                float ex = c.x + fx0 * back + fz0 * side, ez = c.z + fz0 * back - fx0 * side;
+                int k = fx.spawn(Particles.BALL, ex, c.y + c.def.wheelR + rnd(0.1f), ez, c.vx * 0.4f - fx0 * 3f + rnd(1f), 0.8f + (float) Math.random(),
+                        c.vz * 0.4f - fz0 * 3f + rnd(1f), 0.3f + (float) Math.random() * 0.25f, 0.25f + (float) Math.random() * 0.15f, NITRO_CORE, -1f);
+                fx.fade(k, 0xFF3A0A);
+                fx.glow(k, 0.2f);
+                fx.drag(k, 4f);
+            }
             if (c.airborne && c != hoodCar && Math.random() < 0.5 && isNear(c.x, c.z, 40f)) {
                 // a twinkly trail under and behind the car
                 float bx = c.x - (float) Math.sin(c.yaw) * 1.2f, bz = c.z - (float) Math.cos(c.yaw) * 1.2f;
@@ -570,6 +603,44 @@ public final class MatchView implements Match.Listener {
         int col = PowerUps.COLOR[c.power];
         M4.trs(m, px, y - s * 0.6f, pz, 0, 0, 0, s * 0.7f, 0.8f, s * 0.7f);
         r.draw(art.ring, m, col, col, 0.45f);
+    }
+
+    /** Nitro flame colors: the outer flame and its hot core. */
+    static final int NITRO_FLAME = 0xFF5A1F, NITRO_CORE = 0xFFF0A0;
+
+    /**
+     * Nitro: two flickering flames out of the back of the body and speed streaks sliding back along its sides
+     * (from the hood camera only the streaks, they whizz past the edges of the view).
+     */
+    private void drawNitro(Renderer r, Art art, Car c, boolean hood) {
+        CarDef d = c.def;
+        float k = Math.min(1f, c.nitroT * 2.5f); // dies down in its last moments
+        float sp = c.speed();
+        if (!hood) {
+            float back = art.carBack[d.id] + 0.08f, y = d.wheelR * 1.05f;
+            float sx = Math.max(0.25f, d.wheelX * 0.42f);
+            for (int s = -1; s <= 1; s += 2) {
+                float flick = 0.85f + 0.3f * (float) Math.sin(time * 41f + c.index * 3.1f + s * 1.7f) + 0.12f * (float) Math.sin(time * 67f + s);
+                float len = (1.1f + 0.6f * Math.min(1f, sp / 22f)) * flick * k;
+                float w = 0.9f * k;
+                M4.copy(base, m);
+                M4.postTranslate(m, s * sx, y, back);
+                M4.postScale(m, w, w, len);
+                r.draw(art.flame, m, NITRO_FLAME, NITRO_CORE, 0.55f);
+            }
+        }
+        if (sp < 6f) return;
+        float len = Math.min(1f, (sp - 6f) / 10f) * k;
+        for (int i = 0; i < 4; i++) {
+            float ph = (time * 2.4f + i * 0.27f + c.index * 0.13f) % 1f;
+            float side = i % 2 == 0 ? -1f : 1f;
+            float lx = side * (d.wheelX + 0.5f + (i / 2) * 0.4f);
+            float ly = 0.3f + ((i * 0.37f + c.index * 0.21f) % 1f) * Math.max(0.6f, d.topY * 0.7f);
+            M4.copy(base, m);
+            M4.postTranslate(m, lx, ly, 1.4f - ph * 5.5f);
+            M4.postScale(m, 0.05f, 0.05f, 2f * (1f - ph) * len + 0.01f);
+            r.draw(art.cube, m, 0xFFFFFF, 0xFFFFFF, 0.6f);
+        }
     }
 
     // ice shell: crystals around a frozen car in car space: x across and z along (fractions of the car's size),

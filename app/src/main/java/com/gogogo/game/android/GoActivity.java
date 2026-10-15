@@ -269,8 +269,12 @@ public final class GoActivity extends Activity implements Platform {
         }
     }
 
-    public void playSound(int handle, float volume, float pitch) {
-        if (handle != 0) pool.play(handle, volume, volume, 1, 0, pitch);
+    public int playSound(int handle, float volume, float pitch) {
+        return handle != 0 ? pool.play(handle, volume, volume, 1, 0, pitch) : 0;
+    }
+
+    public void stopSound(int stream) {
+        if (stream != 0) pool.stop(stream);
     }
 
     public void playMusic(final String path, final float volume) {

@@ -20,7 +20,11 @@ public interface Platform {
     /** Returns a handle for {@link #playSound}. */
     int loadSound(String assetPath);
 
-    void playSound(int handle, float volume, float pitch);
+    /** Returns the playing stream for {@link #stopSound} (0 if nothing plays). */
+    int playSound(int handle, float volume, float pitch);
+
+    /** Cuts a sound started by {@link #playSound} short. */
+    void stopSound(int stream);
 
     void playMusic(String assetPath, float volume);
 

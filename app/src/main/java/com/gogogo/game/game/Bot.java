@@ -29,7 +29,7 @@ public final class Bot {
         // every trait follows the skill with a bit of its own luck, so two bots of the same skill still differ
         reaction = (0.17f + 0.9f * dull * (float) Math.sqrt(dull)) * rng.range(0.8f, 1.2f);
         mistake = 0.15f * dull * dull * rng.range(0.6f, 1.4f);
-        aggression = clamp01(0.05f + 0.75f * skill + rng.range(-0.3f, 0.3f));
+        aggression = clamp01(0.4f + rng.range(-0.4f, 0.4f));
         smarts = clamp01(skill + rng.range(-0.12f, 0.12f));
         wits = clamp01(0.1f + 0.95f * skill + rng.range(-0.12f, 0.12f));
         jumpLead = rng.range(0.1f, 0.3f + 0.5f * dull);
@@ -98,7 +98,11 @@ public final class Bot {
             scanT = m.rng.range(0.1f, 0.2f);
             seen = worthIt(m, c, type);
             if (!seen) powerT = -1f;
-            else if (powerT < 0f) powerT = reaction * m.rng.range(0.7f, 1.5f) + (1f - wits) * m.rng.range(0.2f, 1.2f);
+            else if (powerT < 0f) {
+                powerT = reaction * m.rng.range(0.7f, 1.5f) + (1f - wits) * m.rng.range(0.2f, 1.2f);
+                // a straight run is over quickly: nitro needs a quick foot
+                if (type == PowerUps.NITRO) powerT *= 0.35f;
+            }
         }
         if (powerT >= 0f && seen) {
             powerT -= dt;
@@ -109,10 +113,11 @@ public final class Bot {
         }
     }
 
-    /** Is there something to throw at / shove right now? */
+    /** Is there something to throw at / shove / race to right now? */
     private boolean worthIt(Match m, Car c, int type) {
         if (type == PowerUps.SNOWBALL) return m.power.snowTarget(c) >= 0;
         if (type == PowerUps.ICE) return m.power.iceTarget(c) >= 0;
+        if (type == PowerUps.NITRO) return nitroRun(m, c);
         // super bump: a crowd, or anyone close while the floor is dropping and this car stands near an edge
         Arena.Tile here = m.arena.cellAt(c.x, c.z);
         boolean edgy = m.phase == Match.DROP && here != null && here.state == Arena.PRESENT;
@@ -124,6 +129,22 @@ public final class Bot {
             if (dx * dx + dz * dz < r * r) near++;
         }
         return near >= 3 || (near >= 2 && m.rng.chance(0.4f + wits * 0.4f)) || (edgy && near >= 1 && m.rng.chance(0.3f * wits));
+    }
+
+    /**
+     * Nitro: lined up for a long straight run to the goal (or running late), with nothing but floor in between;
+     * the rough ones also floor it when somebody stands in the way.
+     */
+    private boolean nitroRun(Match m, Car c) {
+        Arena.Tile g = goal;
+        if (m.phase != Match.SHOW || c.nitroT > 0 || g == null || g.state != Arena.PRESENT || thinkT > 0) return false;
+        float dx = g.x - c.x, dz = g.z - c.z;
+        float d = (float) Math.sqrt(dx * dx + dz * dz);
+        if (d < 8f) return false;
+        float facing = (dx * (float) Math.sin(c.yaw) + dz * (float) Math.cos(c.yaw)) / d;
+        if (facing < 0.93f || !m.arena.clearLine(c.x, c.z, g.x, g.z, 1.2f)) return false;
+        float need = d / Math.max(4f, c.maxSpeed);
+        return d > 13f || need > m.timer * 0.5f || (aggression > 0.6f && m.power.snowTarget(c) >= 0);
     }
 
     /** Just started falling while holding a super jump: jump out, if it reacts in time. */
@@ -249,12 +270,15 @@ public final class Bot {
             }
             c.inX = dx / d;
             c.inZ = dz / d;
-            // don't ram yourself off the edge, and only boost into someone with floor behind them
-            float ex = c.x + c.inX * 2.5f, ez = c.z + c.inZ * 2.5f;
+            // don't ram yourself off the edge (good drivers look further ahead, more so at speed),
+            // and only boost into someone with floor behind them
+            float look = 2.5f + skill * (1.5f + c.speed() * 0.12f);
+            float ex = c.x + c.inX * look, ez = c.z + c.inZ * look;
             if (m.arena.cellAt(ex, ez) != here) {
                 victim = -1;
             } else if (close && c.boostCd <= 0 && m.rng.chance(0.08f)
-                    && m.arena.clearLine(c.x, c.z, c.x + c.inX * 7f, c.z + c.inZ * 7f, 0.5f)) {
+                    && m.arena.clearLine(c.x, c.z, c.x + c.inX * 7f, c.z + c.inZ * 7f, 0.5f)
+                    && m.arena.supported(c.x + c.inX * 5f * skill, c.z + c.inZ * 5f * skill)) {
                 c.wantBoost = true;
             }
         }
@@ -354,6 +378,11 @@ public final class Bot {
             return;
         }
         float ax = aim, az = aim2;
+        if (!rush) {
+            // holding on to an island: good drivers keep to its middle
+            ax *= sloppy;
+            az *= sloppy;
+        }
         if (t.edge) {
             // park on the side away from the drop
             Arena a = m.arena;

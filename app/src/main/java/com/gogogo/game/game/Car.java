@@ -61,8 +61,8 @@ public final class Car {
     public int power = -1;
     /** Set to use the held power-up this step (like wantBoost). */
     public boolean wantPower;
-    /** Seconds left: frozen in an ice block, on sticky wheels, sliding after a power-up hit. */
-    public float frozenT, stickyT, slipT;
+    /** Seconds left: frozen in an ice block, on sticky wheels, sliding after a power-up hit, burning nitro. */
+    public float frozenT, stickyT, slipT, nitroT;
     /** In the air after a super jump (no floor check until it comes down). */
     public boolean airborne;
     public float airT;
@@ -71,8 +71,8 @@ public final class Car {
     public float landSpeed;
     /** Power-up that gave the last hit (lastHitBy), -1 = a plain bump. */
     public int lastHitPower = -1;
-    /** Power-ups picked up and used, and falls saved by a super jump, this match. */
-    public int pickups, powersUsed, rescues;
+    /** Power-ups picked up and used, falls saved by a super jump, and nitros fired, this match. */
+    public int pickups, powersUsed, rescues, nitros;
 
     public Car(int index, CarDef def, String name, boolean isPlayer, int[] lv) {
         this.index = index;
@@ -112,6 +112,7 @@ public final class Car {
         if (falling) {
             justBoosted = false;
             wantBoost = false;
+            nitroT = 0f; // a fall puts the fire out
             fallT += dt;
             vy -= Arena.GRAVITY * dt;
             y += vy * dt;
@@ -126,6 +127,7 @@ public final class Car {
 
         if (stickyT > 0) stickyT = Math.max(0f, stickyT - dt);
         if (slipT > 0) slipT = Math.max(0f, slipT - dt);
+        if (nitroT > 0) nitroT = Math.max(0f, nitroT - dt);
         if (frozenT > 0) {
             frozenT -= dt;
             if (frozenT <= 0) {
@@ -175,8 +177,10 @@ public final class Car {
         }
         steerVis = Ease.approach(steerVis, Math.max(-0.5f, Math.min(0.5f, yawRate * 0.12f)), 12f, dt);
 
-        // throttle
-        float ax = fx * accel * thr, az = fz * accel * thr;
+        // throttle (nitro pushes harder)
+        boolean nitro = nitroT > 0;
+        float push = nitro ? accel * PowerUps.NITRO_ACCEL : accel;
+        float ax = fx * push * thr, az = fz * push * thr;
         if (reversing) {
             ax = -fx * accel * 0.55f;
             az = -fz * accel * 0.55f;
@@ -215,7 +219,8 @@ public final class Car {
         vx = fx * fwd + latx;
         vz = fz * fwd + latz;
 
-        float cap = maxSpeed * (boostT > 0 ? 1.65f : 1f);
+        // nitro raises the top speed; a BUMP on top of it adds a bit less than usual
+        float cap = maxSpeed * (nitro ? PowerUps.NITRO_SPEED : 1f) * (boostT > 0 ? (nitro ? PowerUps.NITRO_BUMP_CAP : 1.65f) : 1f);
         float sp = (float) Math.sqrt(vx * vx + vz * vz);
         if (sp > cap) {
             float k = Ease.approach(sp, cap, boostT > 0 ? 2f : 6f, dt) / sp;
@@ -305,6 +310,15 @@ public final class Car {
         boostT = 0f;
         wantBoost = false;
         stickyT = 0f;
+        nitroT = 0f;
+    }
+
+    /** Nitro: a kick forward, then a higher top speed and quicker acceleration for a while. */
+    public void nitro() {
+        nitroT = PowerUps.NITRO_TIME;
+        vx += (float) Math.sin(yaw) * PowerUps.NITRO_KICK;
+        vz += (float) Math.cos(yaw) * PowerUps.NITRO_KICK;
+        squashV -= 7f;
     }
 
     /** One step in the air: limited air control, a floaty arc, landing or falling at the bottom of it. */

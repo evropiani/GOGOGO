@@ -6,16 +6,16 @@ package com.gogogo.game.game;
  * Everything lives in fixed pools (no allocation while a match runs).
  */
 public final class PowerUps {
-    public static final int SNOWBALL = 0, ICE = 1, JUMP = 2, STICKY = 3, SUPER_BUMP = 4, COUNT = 5;
-    public static final String[] NAME = {"SNOWBALL", "ICE BLOCK", "SUPER JUMP", "STICKY WHEELS", "SUPER BUMP"};
+    public static final int SNOWBALL = 0, ICE = 1, JUMP = 2, STICKY = 3, SUPER_BUMP = 4, NITRO = 5, COUNT = 6;
+    public static final String[] NAME = {"SNOWBALL", "ICE BLOCK", "SUPER JUMP", "STICKY WHEELS", "SUPER BUMP", "NITRO"};
     /** Label on the power button. */
-    public static final String[] SHORT = {"SNOWBALL", "ICE", "JUMP", "STICKY", "SUPER BUMP"};
+    public static final String[] SHORT = {"SNOWBALL", "ICE", "JUMP", "STICKY", "SUPER BUMP", "NITRO"};
     /** Pop-up word when the player grabs one. */
-    public static final String[] GOT = {"SNOWBALL!", "ICE BLOCK!", "SUPER JUMP!", "STICKY WHEELS!", "SUPER BUMP!"};
+    public static final String[] GOT = {"SNOWBALL!", "ICE BLOCK!", "SUPER JUMP!", "STICKY WHEELS!", "SUPER BUMP!", "NITRO!"};
     /** Signature color of each power-up (RGB). */
-    public static final int[] COLOR = {0xDDEEFF, 0x45D8FF, 0x7BEA3C, 0xD05CFF, 0xFF7A1F};
+    public static final int[] COLOR = {0xDDEEFF, 0x45D8FF, 0x7BEA3C, 0xD05CFF, 0xFF7A1F, 0xFF3A4A};
     /** How often each kind shows up, relative to the others. */
-    private static final float[] WEIGHT = {1.25f, 0.9f, 1f, 0.9f, 0.95f};
+    private static final float[] WEIGHT = {1.25f, 0.9f, 1f, 0.9f, 0.95f, 0.95f};
 
     // ---- tuning
     /** Ice block: seconds frozen, and the grip (and coasting drag) of a frozen car: it slides like a puck. */
@@ -36,6 +36,11 @@ public final class PowerUps {
     private static final float SNOW_LIFT = 3f, SNOW_GRAVITY = 10f;
     /** Super bump: shockwave radius and the outward push at its middle (weaker towards the rim). */
     public static final float SHOCK_RADIUS = 6.5f, SHOCK_PUSH = 21f;
+    /**
+     * Nitro: seconds it lasts, top speed and acceleration multipliers while it burns, the kick forward when it fires,
+     * and how much of the BUMP top speed bonus is left on top of it.
+     */
+    public static final float NITRO_TIME = 5f, NITRO_SPEED = 1.45f, NITRO_ACCEL = 1.7f, NITRO_KICK = 7f, NITRO_BUMP_CAP = 1.3f;
     /** Seconds a car hit by a power-up keeps less grip (so the push carries). */
     public static final float SLIP_TIME = 0.4f;
     /** Distance at which a car grabs a pickup. */
@@ -220,6 +225,10 @@ public final class PowerUps {
                 break;
             case STICKY:
                 c.stickyT = STICKY_TIME;
+                break;
+            case NITRO:
+                c.nitro();
+                c.nitros++;
                 break;
             default:
                 shockwave(c);

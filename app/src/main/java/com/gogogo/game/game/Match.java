@@ -103,7 +103,7 @@ public final class Match {
             player.god = opt.god;
             player.manual = true;
             player.trail = save.trail;
-            if (opt.autopilot) player.bot = new Bot(rng, 2);
+            if (opt.autopilot) player.bot = new Bot(rng, 0.9f);
             cars[k++] = player;
         }
         for (; k < n; k++) {
@@ -111,11 +111,12 @@ public final class Match {
             do {
                 id = rng.i(Cars.ALL.length);
             } while (!Cars.forBots(id));
-            int tier = rng.f() < 0.3f ? 0 : (rng.f() < 0.86f ? 1 : 2);
+            // every bot gets its own skill, and its car its own upgrades (each stat on its own)
+            float skill = Bot.randomSkill(rng);
             int[] lv = new int[4];
-            for (int i = 0; i < 4; i++) lv[i] = rng.i(tier + 2);
+            for (int i = 0; i < 4; i++) lv[i] = Bot.randomLevel(rng, skill);
             Car c = new Car(k, Cars.ALL[id], names[k], false, lv);
-            c.bot = new Bot(rng, tier);
+            c.bot = new Bot(rng, skill);
             c.bot.dumb = opt.dumbBots;
             int paint = rng.chance(0.5f) ? Cars.ALL[id].defPaint : botPaint();
             int accent = rng.chance(0.6f) ? Cars.ALL[id].defAccent : botPaint();

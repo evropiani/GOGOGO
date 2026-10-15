@@ -4,11 +4,14 @@ import com.gogogo.game.engine.Rng;
 
 /** Simple, slightly goofy opponent brain. */
 public final class Bot {
+    /** Overall skill, 0 = clueless .. 1 = scary. The traits below scatter around it. */
+    public final float skill;
     public final float reaction;   // seconds before reacting to a new color
     public final float mistake;    // chance to go for a wrong color
     public final float aggression; // likes ramming people off islands
     public final float smarts;     // avoids crowds, plans boost
     public final float wits;       // how well it uses power-ups
+    private final float sloppy;    // how far from a tile's middle it parks, and how rarely it rethinks its way around holes
     public boolean dumb;           // dev option
 
     public Arena.Tile goal;
@@ -19,34 +22,37 @@ public final class Bot {
     private float rethinkT;
     private int victim = -1;
 
-    public Bot(Rng rng, int tier) {
-        switch (tier) {
-            case 0: // noob
-                reaction = rng.range(0.55f, 1.05f);
-                mistake = rng.range(0.07f, 0.14f);
-                aggression = rng.range(0f, 0.3f);
-                smarts = rng.range(0f, 0.3f);
-                wits = rng.range(0.15f, 0.45f);
-                jumpLead = rng.range(0.15f, 0.8f);
-                break;
-            case 2: // pro
-                reaction = rng.range(0.16f, 0.32f);
-                mistake = rng.range(0.0f, 0.02f);
-                aggression = rng.range(0.4f, 1f);
-                smarts = rng.range(0.7f, 1f);
-                wits = rng.range(0.8f, 1f);
-                jumpLead = rng.range(0.1f, 0.3f);
-                break;
-            default:
-                reaction = rng.range(0.3f, 0.6f);
-                mistake = rng.range(0.02f, 0.06f);
-                aggression = rng.range(0.1f, 0.7f);
-                smarts = rng.range(0.3f, 0.7f);
-                wits = rng.range(0.45f, 0.8f);
-                jumpLead = rng.range(0.1f, 0.45f);
-                break;
-        }
+    public Bot(Rng rng, float skill) {
+        skill = clamp01(skill);
+        this.skill = skill;
+        float dull = 1f - skill;
+        // every trait follows the skill with a bit of its own luck, so two bots of the same skill still differ
+        reaction = (0.17f + 0.9f * dull * (float) Math.sqrt(dull)) * rng.range(0.8f, 1.2f);
+        mistake = 0.15f * dull * dull * rng.range(0.6f, 1.4f);
+        aggression = clamp01(0.05f + 0.75f * skill + rng.range(-0.3f, 0.3f));
+        smarts = clamp01(skill + rng.range(-0.12f, 0.12f));
+        wits = clamp01(0.1f + 0.95f * skill + rng.range(-0.12f, 0.12f));
+        jumpLead = rng.range(0.1f, 0.3f + 0.5f * dull);
+        sloppy = clamp01(dull + rng.range(-0.15f, 0.15f));
         wobble = rng.range(0f, 100f);
+    }
+
+    /** Skill of a new bot: mostly average ones, some clueless ones and a few very good ones. */
+    public static float randomSkill(Rng rng) {
+        float r = rng.f();
+        if (r < 0.12f) return rng.range(0f, 0.2f);
+        if (r > 0.94f) return rng.range(0.82f, 1f);
+        return 0.15f + 0.6f * (rng.f() + rng.f() + rng.f()) / 3f;
+    }
+
+    /** Upgrade level (0..CarDef.MAX_LEVEL) of one stat of a bot's car: anything goes, but good bots tend to be tuned up. */
+    public static int randomLevel(Rng rng, float skill) {
+        float t = clamp01(0.5f * rng.f() + 0.5f * skill + rng.range(-0.15f, 0.15f));
+        return Math.min(CarDef.MAX_LEVEL, (int) (t * t * (CarDef.MAX_LEVEL + 1)));
+    }
+
+    private static float clamp01(float v) {
+        return Math.max(0f, Math.min(1f, v));
     }
 
     public void think(Match m, Car c, float dt) {
@@ -294,8 +300,10 @@ public final class Bot {
         if (goal != null) goal.crowd = Math.max(0, goal.crowd - 1);
         goal = best;
         if (goal != null) goal.crowd++;
-        aim = m.rng.range(-0.25f, 0.25f) * Arena.PITCH;
-        aim2 = m.rng.range(-0.25f, 0.25f) * Arena.PITCH;
+        // sloppy drivers park anywhere on the tile, careful ones near its middle
+        float spread = 0.12f + 0.2f * sloppy;
+        aim = m.rng.range(-spread, spread) * Arena.PITCH;
+        aim2 = m.rng.range(-spread, spread) * Arena.PITCH;
     }
 
     private float aim, aim2;
@@ -318,7 +326,7 @@ public final class Bot {
         if (here.index == wayFrom && t.index == wayGoal && wayT > 0) return wayCell;
         wayFrom = here.index;
         wayGoal = t.index;
-        wayT = 0.25f;
+        wayT = 0.15f + 0.25f * sloppy;
         wayCell = -1;
         if (a.clearLine(c.x, c.z, gx, gz, MARGIN)) return -1;
         int best = a.nextStep(here.index, t.index);

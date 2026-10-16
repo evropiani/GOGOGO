@@ -3,6 +3,7 @@ package com.gogogo.desktop;
 import com.gogogo.game.engine.GL;
 import com.gogogo.game.engine.Input;
 import com.gogogo.game.engine.Platform;
+import com.gogogo.game.game.DriverRenderer;
 import com.gogogo.game.game.Game;
 
 import org.lwjgl.glfw.GLFW;
@@ -115,6 +116,7 @@ public final class DesktopLauncher implements Platform {
                     int n = Integer.parseInt(t[1]);
                     double total = 0, worst = 0;
                     long calls = 0, inst = 0;
+                    DriverRenderer.countFull = DriverRenderer.countBust = 0;
                     for (int i = 0; i < n; i++) {
                         long t0 = System.nanoTime();
                         game.step(dt);
@@ -125,8 +127,9 @@ public final class DesktopLauncher implements Platform {
                         calls += game.r.lastCalls;
                         inst += game.r.lastInstances;
                     }
-                    System.out.printf("perf %d frames: %.2f ms avg, %.2f ms worst, %.1f draw calls, %.1f instances%n",
-                            n, total / n, worst, calls / (double) n, inst / (double) n);
+                    System.out.printf("perf %d frames: %.2f ms avg, %.2f ms worst, %.1f draw calls, %.1f instances, drivers %.1f full %.1f bust%n",
+                            n, total / n, worst, calls / (double) n, inst / (double) n,
+                            DriverRenderer.countFull / (double) n, DriverRenderer.countBust / (double) n);
                     break;
                 }
                 case "flag":

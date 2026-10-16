@@ -13,6 +13,8 @@ public final class DriverRenderer {
 
     /** Level of detail. */
     public static final int FULL = 0, BUST = 1, NONE = 2;
+    /** Debug counters: drivers drawn whole and as a stand-in since the last reset (performance checks). */
+    public static int countFull, countBust;
 
     private static final float[] HIPS = new float[16], TORSO = new float[16], HEAD = new float[16], LIMB = new float[16],
             JOINT = new float[16], LOCAL = new float[16], M = new float[16];
@@ -31,6 +33,7 @@ public final class DriverRenderer {
         float[] p = d.pos;
         int[] l = d.look;
         if (lod == BUST) {
+            countBust++;
             // body, head and arms reaching for the wheel in one piece, with what is on its head
             M4.trs(LOCAL, p[Driver.SHIFT] * s, p[Driver.RISE] * s, p[Driver.REACH] * s, p[Driver.TURN] + p[Driver.TWIST],
                     p[Driver.LEAN], -p[Driver.SIDE], s, s, s);
@@ -48,6 +51,7 @@ public final class DriverRenderer {
         M4.postRotY(M, -c.steerVis * 2.5f);
         M4.postScale(M, s, s, s);
         r.draw(art.steeringWheel, M, 0xFFFFFF, 0xFFFFFF, glow);
+        countFull++;
         boolean legs = !def.legsHidden() || p[Driver.RISE] > Driver.LEGS_OUT;
         int face = c.frozenT > 0 ? Outfits.FC_SHOCKED : d.faceShown();
         body(r, art, d, seat, s, legs, face, tint, tintK, glow);

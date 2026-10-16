@@ -2,9 +2,21 @@ package com.gogogo.game.game;
 
 /**
  * A car's cartoon driver: the look it wears (see Outfits) and a floppy ragdoll pose. The pose is a set of joints,
- * each pulled by a spring towards a target: the base pose (driving, standing, flailing) blended with overrides that
- * emotes set joint by joint (pose(), relax()), and shoved around by the car's acceleration, bumps and landings.
- * When its car is eliminated the driver is flung out and tumbles on its own through world space (fling()).
+ * each pulled by a spring-damper towards a target: the base pose (seated for the car's seat style, standing,
+ * flailing, arms up in the air) blended joint by joint with overrides (pose(), relax()), and shoved around by the
+ * car: acceleration, turns, bumps (jolt()), landings, power-up hits. When its car is eliminated the driver is flung
+ * out and tumbles on its own through world space (fling(), tumble()).
+ *
+ * Emotes drive it like this, once per step or frame:
+ * <pre>
+ *     d.pose(Driver.RISE, 0.9f, 1f);     // climb half out of the seat
+ *     d.pose(Driver.R_ARM, 2.9f, 1f);    // right arm straight up...
+ *     d.pose(Driver.R_ELBOW, 0.4f + 0.4f * (float) Math.sin(t * 12f), 1f); // ...waving
+ *     d.face = Outfits.FC_SILLY;         // pull a face
+ *     ...
+ *     d.relax();                         // done: the springs ease back into the base pose
+ *     d.face = -1;
+ * </pre>
  * Allocated once per car; nothing here allocates per step.
  */
 public final class Driver {
@@ -13,30 +25,38 @@ public final class Driver {
     public static final int LEAN = 0, SIDE = 1, TWIST = 2;
     /** Head (on the torso): nod down (+), tilt to its left (+), look to its left (+). */
     public static final int NOD = 3, TILT = 4, LOOK = 5;
-    /** Arms: swing forward / up (+), raise out sideways (+), bend the elbow (+). */
+    /** Arms: swing forward / up (+, PI = straight up), raise out sideways (+), bend the elbow (+). */
     public static final int L_ARM = 6, L_ARM_OUT = 7, L_ELBOW = 8, R_ARM = 9, R_ARM_OUT = 10, R_ELBOW = 11;
     /** Legs: swing forward (+), spread out (+), bend the knee (+). */
     public static final int L_LEG = 12, L_LEG_OUT = 13, L_KNEE = 14, R_LEG = 15, R_LEG_OUT = 16, R_KNEE = 17;
     /**
      * The whole body around the hips: rise up out of the seat (+), shift to its left (+), move forward (+), turn to
-     * its left (+), stretch (+) or squash (-).
+     * its left (+, PI = facing backwards), stretch (+) or squash (-).
      */
     public static final int RISE = 18, SHIFT = 19, REACH = 20, TURN = 21, STRETCH = 22;
     public static final int JOINTS = 23;
+    /** Joint names (debugging, emote tools). */
+    public static final String[] JOINT_NAME = {"LEAN", "SIDE", "TWIST", "NOD", "TILT", "LOOK", "L_ARM", "L_ARM_OUT",
+            "L_ELBOW", "R_ARM", "R_ARM_OUT", "R_ELBOW", "L_LEG", "L_LEG_OUT", "L_KNEE", "R_LEG", "R_LEG_OUT", "R_KNEE",
+            "RISE", "SHIFT", "REACH", "TURN", "STRETCH"};
 
     // ---- skeleton in driver units (one unit is one car unit at seat scale 1): the hips are the origin,
     // +y up, +z forward, +x to the driver's left
     public static final float NECK_Y = 0.5f, HEAD_R = 0.36f, HEAD_Y = 0.33f;
     public static final float SHOULDER_X = 0.29f, SHOULDER_Y = 0.42f, UPPER_ARM = 0.21f, FOREARM = 0.19f, HAND_R = 0.085f;
     public static final float HIP_X = 0.13f, HIP_Y = -0.06f, THIGH = 0.24f, SHIN = 0.22f, SOLE = 0.07f;
+    /** Top of the head (without a hat) over the hips. */
+    public static final float HEAD_TOP = NECK_Y + HEAD_Y + HEAD_R;
     /** Height of the hips over the floor when standing straight. */
     public static final float STAND_Y = -HIP_Y + THIGH + SHIN + SOLE;
     /** The steering wheel in front of a seated driver (center height, distance forward, tilt back from upright). */
     public static final float WHEEL_Y = 0.43f, WHEEL_Z = 0.36f, WHEEL_TILT = 1.0f, WHEEL_R = 0.17f;
     /** A HATCH seat: the hips sit this far below the rim of the hole, which has this radius. */
     public static final float HATCH_DEPTH = 0.27f, HATCH_R = 0.37f;
+    /** RISE at which the legs of a driver sitting in a hole come out (and get drawn). */
+    public static final float LEGS_OUT = 0.3f;
 
-    /** Base poses: sitting in a car (or a showroom), standing on the floor. */
+    /** Base poses: sitting in a car, standing on the floor (showrooms, the podium, flung out). */
     public static final int SEATED = 0, STANDING = 1;
 
     // spring stiffness and damping per joint: torso, head (bobbly), arms (loose), legs, body
@@ -46,20 +66,27 @@ public final class Driver {
             10, 10, 10, 4.5f, 4.5f, 5, 5, 5, 6, 5, 5, 6, 7, 7, 8, 7, 7, 8, 12, 12, 12, 10, 9};
     private static final float[] MIN = {
             -1.3f, -1.1f, -1.6f, -1.2f, -1.2f, -1.7f, -1.4f, -0.4f, -0.1f, -1.4f, -0.4f, -0.1f,
-            -1.2f, -0.3f, -0.1f, -1.2f, -0.3f, -0.1f, -0.8f, -1.6f, -1.2f, -3.3f, -0.45f};
+            -1.2f, -0.3f, -0.1f, -1.2f, -0.3f, -0.1f, -0.8f, -1.6f, -1.6f, -3.3f, -0.45f};
     private static final float[] MAX = {
             1.4f, 1.1f, 1.6f, 1.2f, 1.2f, 1.7f, 3.4f, 2.6f, 2.6f, 3.4f, 2.6f, 2.6f,
-            2.2f, 1.6f, 2.6f, 2.2f, 1.6f, 2.6f, 1.6f, 1.6f, 1.6f, 3.3f, 0.6f};
+            2.2f, 1.6f, 2.6f, 2.2f, 1.6f, 2.6f, 2.4f, 1.6f, 1.6f, 3.3f, 0.6f};
 
     /** What it wears: one item per Outfits part. */
     public final int[] look = new int[Outfits.PARTS];
     public int mode = SEATED;
-    /** Not drawn (an empty seat: the hidden car in the garage). */
+    /** CarDef seat style of the car it sits in (picks how the legs sit) and, astride, how far they spread. */
+    public int style = CarDef.HATCH;
+    public float spread = 0.8f;
+    /** Not drawn at all. */
     public boolean hidden;
+    /** Face shown instead of the look's own (an Outfits face, -1 = its own). */
+    public int face = -1;
+    /** Multiplies the spring stiffness (snappier moves for emotes; 1 = normal). */
+    public float stiffness = 1f;
 
     /** Current joint values and their speeds. */
     public final float[] pos = new float[JOINTS], vel = new float[JOINTS];
-    /** Pose overrides (emotes): the target of joint j is the base pose blended towards over[j] by weight[j] (0..1). */
+    /** Pose overrides: the target of joint j is the base pose blended towards over[j] by weight[j] (0..1). */
     public final float[] over = new float[JOINTS], weight = new float[JOINTS];
     private final float[] target = new float[JOINTS];
 
@@ -84,6 +111,11 @@ public final class Driver {
         return look[Outfits.HELD] != Outfits.HD_NONE;
     }
 
+    /** The face drawn right now. */
+    public int faceShown() {
+        return face >= 0 ? face : look[Outfits.FACE];
+    }
+
     // ------------------------------------------------------------------ poses (for emotes)
 
     /** Pulls a joint towards value, blended with the base pose by w (0..1); stays until changed or relaxed. */
@@ -92,9 +124,15 @@ public final class Driver {
         weight[joint] = w;
     }
 
+    /** Lets go of one joint: back to the base pose. */
+    public void release(int joint) {
+        weight[joint] = 0f;
+    }
+
     /** Lets go of every override: back to the base pose (the springs ease into it). */
     public void relax() {
         for (int j = 0; j < JOINTS; j++) weight[j] = 0f;
+        stiffness = 1f;
     }
 
     /** Kicks a joint (adds speed): slaps, shakes, jolts. */
@@ -111,6 +149,33 @@ public final class Driver {
         }
     }
 
+    /**
+     * A knock from outside: a bump (strength about 3..30), a power-up hit. (dx, dz) is where the push came from
+     * in the car's frame (+x its left, +z ahead); the driver is thrown the other way and flails for a moment.
+     */
+    public void jolt(float strength, float dx, float dz) {
+        float k = Math.min(1f, strength / 18f);
+        kick(LEAN, -dz * 7f * k);
+        kick(SIDE, -dx * 7f * k);
+        kick(NOD, -dz * 9f * k + rnd(3f) * k);
+        kick(TILT, -dx * 9f * k + rnd(3f) * k);
+        kick(STRETCH, -2.5f * k);
+        kick(RISE, 1.5f * k);
+        if (strength > 4f) flailT = Math.max(flailT, 0.25f + 0.6f * k);
+    }
+
+    /** Frozen solid in a moment: snaps into a surprised pose (both arms up) that the ice then holds. */
+    public void startle() {
+        float[] p = pos;
+        p[L_ARM] = p[R_ARM] = 2.6f;
+        p[L_ARM_OUT] = p[R_ARM_OUT] = 0.6f;
+        p[L_ELBOW] = p[R_ELBOW] = 0.5f;
+        p[NOD] = -0.25f;
+        p[LEAN] = -0.2f;
+        p[STRETCH] = 0.12f;
+        for (int j = 0; j < JOINTS; j++) vel[j] = 0f;
+    }
+
     // ------------------------------------------------------------------ stepping
 
     /** One fixed step riding in a car: aFwd and aLeft are the car's acceleration along it and to its left. */
@@ -118,44 +183,37 @@ public final class Driver {
         time += dt;
         if (flailT > 0) flailT -= dt;
         mode = SEATED;
-        // a hard knock (a bump, a hit, a shove): the driver goes flying around in the seat for a moment
-        float a2 = aFwd * aFwd + aLeft * aLeft;
-        if (a2 > 160f * 160f) {
-            float a = (float) Math.sqrt(a2);
-            flailT = Math.max(flailT, Math.min(1.1f, 0.35f + a / 900f));
-            kick(NOD, rnd(6f));
-            kick(TILT, rnd(6f));
-            kick(STRETCH, -1.5f);
-        }
-        if (c.falling) flailT = 0.5f;
+        if (c.falling) flailT = Math.max(flailT, 0.5f);
         baseTargets(c.airborne, dt);
-        // steering: lean and look into the turn
+        // steering: lean and look into the turn, the hands follow the wheel
         float steer = c.steerVis;
         target[TWIST] += steer * 0.5f;
         target[LOOK] += steer * 0.9f;
+        target[SIDE] += steer * 0.25f;
         if (!holding()) target[R_ARM_OUT] -= steer * 0.3f;
         target[L_ARM_OUT] += steer * 0.3f;
-        // speed: tuck in a little
+        // speed: tuck in a little; a bump boost throws it back in the seat (the push below)
         float sp = Math.min(1f, c.speed() / 18f);
         target[LEAN] += sp * 0.12f;
-        // bumps lift the car: the driver sinks into the seat, landings squash it
+        // hops lift the car: the driver sinks into the seat, landings squash it
         float aUp = (c.hopV - lastHopV) / dt;
         lastHopV = c.hopV;
         if (aUp > 0f) {
-            vel[RISE] -= aUp * 0.004f;
-            vel[STRETCH] -= aUp * 0.006f;
+            vel[RISE] -= Math.min(3f, aUp * 0.004f);
+            vel[STRETCH] -= Math.min(4f, aUp * 0.006f);
         }
         if (c.justLanded) {
             vel[STRETCH] -= Math.min(4f, c.landSpeed * 0.18f);
             vel[NOD] += Math.min(6f, c.landSpeed * 0.25f);
+            vel[RISE] -= Math.min(3f, c.landSpeed * 0.1f);
             flailT = Math.max(flailT, 0.3f);
         }
-        // inertia: thrown back when speeding up, to the outside of a turn
-        float fl = -aFwd, fs = -aLeft;
-        springs(dt, fl * 1.2f, fs * 1.0f, fl * 1.0f, fs * 0.9f, fl * 0.5f, fs * 0.5f);
+        // inertia: thrown back when speeding up, to the outside of a turn (capped: a bump boost is one big shove)
+        float fl = clamp(-aFwd, 420f), fs = clamp(-aLeft, 420f);
+        springs(dt, fl * 0.9f, fs * 0.8f, fl * 0.8f, fs * 0.7f, fl * 0.4f, fs * 0.4f);
     }
 
-    /** One step in a showroom (no car moving it): idle fidgets only. */
+    /** One step with no car moving it (showrooms, the podium): breathing and fidgeting only. */
     public void idle(float dt) {
         time += dt;
         if (flailT > 0) flailT -= dt;
@@ -163,7 +221,7 @@ public final class Driver {
         springs(dt, 0, 0, 0, 0, 0, 0);
     }
 
-    /** Thrown out of an eliminated car: leaves its seat on a tumbling arc of its own. */
+    /** Thrown out of an eliminated car: leaves its seat on a tumbling arc of its own, away from the arena. */
     public void fling(Car c) {
         if (flung) return;
         CarDef d = c.def;
@@ -172,8 +230,10 @@ public final class Driver {
         wx = c.x + fx * d.seatZ + fz * d.seatX;
         wz = c.z + fz * d.seatZ - fx * d.seatX;
         wy = c.y + c.hop + d.seatY;
-        wvx = c.vx * 0.35f + rnd(2.5f);
-        wvz = c.vz * 0.35f + rnd(2.5f);
+        float out = (float) Math.sqrt(c.x * c.x + c.z * c.z);
+        float ox = out > 0.1f ? c.x / out : fx, oz = out > 0.1f ? c.z / out : fz;
+        wvx = c.vx * 0.35f + ox * 3f + rnd(1.5f);
+        wvz = c.vz * 0.35f + oz * 3f + rnd(1.5f);
         wvy = Math.max(0f, c.vy) + 9f + (float) Math.random() * 4f;
         wYaw = c.yaw;
         wPitch = 0f;
@@ -184,6 +244,8 @@ public final class Driver {
         scale = d.seatScale;
         flung = true;
         flailT = 99f;
+        face = -1;
+        relax();
         for (int j = 0; j < JOINTS; j++) vel[j] += rnd(4f);
     }
 
@@ -210,6 +272,7 @@ public final class Driver {
     public void reset() {
         flung = false;
         flailT = 0f;
+        face = -1;
         relax();
         settle();
     }
@@ -244,10 +307,18 @@ public final class Driver {
                 g[R_ARM_OUT] = -0.12f;
                 g[R_ELBOW] = 0.75f;
             }
-            // sitting: thighs forward, shins down
-            g[L_LEG] = g[R_LEG] = 1.5f;
-            g[L_LEG_OUT] = g[R_LEG_OUT] = 0.12f;
-            g[L_KNEE] = g[R_KNEE] = 1.45f;
+            if (style == CarDef.SADDLE) {
+                // astride: thighs forward and out round the car, shins hanging down
+                g[L_LEG] = g[R_LEG] = 0.75f;
+                g[L_LEG_OUT] = g[R_LEG_OUT] = spread;
+                g[L_KNEE] = g[R_KNEE] = 0.9f;
+            } else {
+                // sitting: thighs forward, shins down; climbing out of a hole straightens them
+                float up = style == CarDef.BENCH ? 0f : clamp01((pos[RISE] - 0.15f) / 0.7f);
+                g[L_LEG] = g[R_LEG] = 1.5f * (1f - up);
+                g[L_LEG_OUT] = g[R_LEG_OUT] = 0.12f;
+                g[L_KNEE] = g[R_KNEE] = 1.45f * (1f - up) + 0.1f * up;
+            }
         } else {
             // standing: arms hanging loose (the right one shows off the thing it holds), shifting its weight
             float sway = (float) Math.sin(t * 1.1f);
@@ -305,6 +376,7 @@ public final class Driver {
      */
     private void springs(float dt, float torsoF, float torsoS, float headF, float headS, float armF, float armS) {
         float[] p = pos, v = vel, g = target;
+        float ks = stiffness, cs = (float) Math.sqrt(stiffness);
         for (int j = 0; j < JOINTS; j++) {
             float f = 0f;
             switch (j) {
@@ -317,7 +389,7 @@ public final class Driver {
                 case R_ARM_OUT: f = -armS; break;
                 default: break;
             }
-            v[j] += (K[j] * (g[j] - p[j]) - C[j] * v[j] + f) * dt;
+            v[j] += (K[j] * ks * (g[j] - p[j]) - C[j] * cs * v[j] + f) * dt;
             p[j] += v[j] * dt;
             if (p[j] < MIN[j]) {
                 p[j] = MIN[j];
@@ -327,6 +399,14 @@ public final class Driver {
                 if (v[j] > 0) v[j] *= -0.3f;
             }
         }
+    }
+
+    private static float clamp(float v, float r) {
+        return v < -r ? -r : (v > r ? r : v);
+    }
+
+    private static float clamp01(float v) {
+        return v < 0f ? 0f : (v > 1f ? 1f : v);
     }
 
     private static float rnd(float r) {

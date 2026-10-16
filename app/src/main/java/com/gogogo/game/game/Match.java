@@ -489,6 +489,8 @@ public final class Match {
                         b.flash = Math.min(1f, strength * 0.06f);
                         a.squashV += strength * 0.5f;
                         b.squashV += strength * 0.5f;
+                        a.jolt(strength, nx, nz);
+                        b.jolt(strength, -nx, -nz);
                         emit(EV_BUMP, a, b, strength);
                     }
                 }

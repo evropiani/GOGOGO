@@ -241,7 +241,7 @@ public final class MatchView implements Match.Listener {
 
         rankDrivers();
         for (Car c : match.cars) {
-            if (c.driver.flung && lod[c.index] != DriverRenderer.NONE) DriverRenderer.flung(r, art, c.driver);
+            if (c.driver.flung) DriverRenderer.flung(r, art, c.driver, lod[c.index]);
             if (c.y < -85f) continue;
             drawCar(c, c == match.player && c.alive);
         }
@@ -323,7 +323,7 @@ public final class MatchView implements Match.Listener {
         }
 
         if (marker) {
-            M4.trs(m, c.x, c.y + d.topY + 2.6f + (float) Math.abs(Math.sin(time * 5f)) * 0.6f, c.z, time * 2.5f, 0, 0, 1.3f, 1.3f, 1.3f);
+            M4.trs(m, c.x, c.y + d.topmost() + 1.7f + (float) Math.abs(Math.sin(time * 5f)) * 0.6f, c.z, time * 2.5f, 0, 0, 1.3f, 1.3f, 1.3f);
             r.draw(art.marker, m, 0xFFE14D, 0xFFE14D, 0.3f);
             if (t != null && !c.falling && (!c.airborne || (floor && t.state != Arena.FALLING))) {
                 float pulse = 1.55f + (float) Math.sin(time * 6f) * 0.08f;
@@ -599,7 +599,7 @@ public final class MatchView implements Match.Listener {
     private void drawHeld(Renderer r, Art art, Car c) {
         CarDef d = c.def;
         float fx0 = (float) Math.sin(c.yaw), fz0 = (float) Math.cos(c.yaw);
-        float top = Math.max(d.topY + (c.topper > 0 ? 1f : 0.1f), art.carTop[d.id]);
+        float top = Math.max(Math.max(d.topY + (c.topper > 0 ? d.topScale : 0.1f), d.driverTop + 0.1f), art.carTop[d.id]);
         boolean followed = c == camCar;
         float y = c.y + c.hop + top + (followed ? 0.4f : 0.55f) + (float) Math.sin(time * 3.4f + c.index) * 0.08f;
         float px = c.x - fx0 * 0.35f, pz = c.z - fz0 * 0.35f;

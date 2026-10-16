@@ -40,7 +40,7 @@ public final class CarRenderer {
             M4.trs(SEAT, c.x, c.y + c.hop + bob, c.z, c.yaw, pitch, roll, 1, 1, 1);
             M4.postTranslate(SEAT, d.seatX * sxz, d.seatY * sy, d.seatZ * sxz);
             float k = c.frozenT > 0 ? Math.min(1f, c.frozenT * 4f) * 0.6f : 0f;
-            DriverRenderer.seated(r, art, c, SEAT, driver, topper, time, ICE_TINT, k, glow);
+            DriverRenderer.seated(r, art, c, SEAT, driver, topper, ICE_TINT, k, glow);
         }
         if (d.id == Cars.DISCO || d.id == Cars.TITAN) drawBodyExtras(r, art, c, d, time, base, m);
 
@@ -64,9 +64,10 @@ public final class CarRenderer {
 
         if (topper && c.topper > 0) {
             M4.copy(base, m);
-            M4.postTranslate(m, 0, d.topY, d.topZ);
-            M4.postRotX(m, c.topZ * 0.9f);
+            M4.postTranslate(m, d.topX, d.topY, d.topZ);
+            M4.postRotX(m, c.topZ * 0.9f + d.topTilt);
             M4.postRotZ(m, -c.topX * 0.9f);
+            if (d.topScale != 1f) M4.postScale(m, d.topScale, d.topScale, d.topScale);
             r.draw(art.toppers[c.topper], m, paint, accent, 0f);
             if (c.topper == 4) {
                 M4.postTranslate(m, 0, 0.45f, 0);

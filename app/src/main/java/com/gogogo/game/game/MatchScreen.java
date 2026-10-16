@@ -893,7 +893,7 @@ public final class MatchScreen extends Screen {
                 }
             }
             tagged[k] = best;
-            if (best == null || !game.cam.project(best.x, best.y + best.def.topY + 1.0f, best.z, pr)) continue;
+            if (best == null || !game.cam.project(best.x, best.y + best.def.topmost() + 0.1f, best.z, pr)) continue;
             b.alpha(0.75f);
             b.text(b.body, best.name, pr[0] / b.scale, pr[1] / b.scale, 22f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 3f);
             b.alpha(1f);

@@ -5,8 +5,8 @@ import com.gogogo.game.engine.Mesh;
 import com.gogogo.game.engine.Renderer;
 
 /**
- * Draws drivers from their Driver state: the whole ragdoll (FULL), a one-piece stand-in for drivers far from the
- * camera (BUST), or nothing (NONE). Allocation free (scratch matrices).
+ * Draws drivers from their Driver state: the whole ragdoll (FULL), a cheap stand-in for drivers far from the
+ * camera (BUST: one merged body mesh plus the hat or hair), or nothing (NONE). Allocation free (scratch matrices).
  */
 public final class DriverRenderer {
     private DriverRenderer() {}
@@ -20,20 +20,24 @@ public final class DriverRenderer {
 
     /**
      * A driver in its car. seat is the car's body transform (without its squash) moved to the seat; head = false
-     * leaves out the head (the hood camera sits there). tint / glow: frozen or flashing cars pass it on.
+     * is for the car the hood camera sits on: only the hands on the wheel are drawn. tint / tintK: frozen cars pass
+     * their icy tint on; glow: flashing cars.
      */
-    static void seated(Renderer r, Art art, Car c, float[] seat, int lod, boolean head, float time, int tint, float tintK, float glow) {
+    static void seated(Renderer r, Art art, Car c, float[] seat, int lod, boolean head, int tint, float tintK, float glow) {
         Driver d = c.driver;
         CarDef def = c.def;
         float s = def.seatScale;
         float[] p = d.pos;
+        int[] l = d.look;
         if (lod == BUST) {
+            // body, head and arms reaching for the wheel in one piece, with what is on its head
             M4.trs(LOCAL, p[Driver.SHIFT] * s, p[Driver.RISE] * s, p[Driver.REACH] * s, p[Driver.TURN] + p[Driver.TWIST],
                     p[Driver.LEAN], -p[Driver.SIDE], s, s, s);
             M4.mul(M, seat, LOCAL);
-            int[] l = d.look;
-            r.draw(art.drvBust, M, ice(Outfits.COLOR[Outfits.SKIN][l[Outfits.SKIN]], tint, tintK),
-                    ice(Outfits.COLOR[Outfits.SHIRT][l[Outfits.SHIRT]], tint, tintK), glow);
+            int skin = ice(Outfits.COLOR[Outfits.SKIN][l[Outfits.SKIN]], tint, tintK);
+            r.draw(art.drvBust, M, skin, ice(Outfits.COLOR[Outfits.SHIRT][l[Outfits.SHIRT]], tint, tintK), glow);
+            M4.postTranslate(M, 0, Driver.NECK_Y, 0);
+            topOfHead(r, art, l, M, tint, tintK, glow);
             return;
         }
         if (head) {
@@ -45,26 +49,46 @@ public final class DriverRenderer {
             M4.postScale(M, s, s, s);
             r.draw(art.steeringWheel, M, 0xFFFFFF, 0xFFFFFF, glow);
         }
-        boolean legs = def.seatStyle != CarDef.HATCH;
-        body(r, art, d, seat, s, legs, head, tint, tintK, glow);
+        boolean legs = !def.legsHidden() || p[Driver.RISE] > Driver.LEGS_OUT;
+        int face = c.frozenT > 0 ? Outfits.FC_SHOCKED : d.faceShown();
+        body(r, art, d, seat, s, legs, head, face, tint, tintK, glow);
     }
 
     /** A driver standing on the floor at (x, y, z) facing yaw, scale s (showrooms, the results). */
     public static void standing(Renderer r, Art art, Driver d, float x, float y, float z, float yaw, float s, float glow) {
         if (d.hidden) return;
         M4.trs(M, x, y + Driver.STAND_Y * s, z, yaw, 0, 0, 1, 1, 1);
-        body(r, art, d, M, s, true, true, 0, 0f, glow);
+        body(r, art, d, M, s, true, true, d.faceShown(), 0, 0f, glow);
     }
 
     /** A driver flung out of its car, tumbling through the air. */
-    static void flung(Renderer r, Art art, Driver d) {
-        if (d.wy < -90f) return;
+    static void flung(Renderer r, Art art, Driver d, int lod) {
+        if (d.wy < -90f || lod == NONE) return;
         M4.trs(M, d.wx, d.wy, d.wz, d.wYaw, d.wPitch, d.wRoll, 1, 1, 1);
-        body(r, art, d, M, d.scale, true, true, 0, 0f, 0f);
+        body(r, art, d, M, d.scale, true, true, Outfits.FC_SHOCKED, 0, 0f, 0f);
     }
 
-    /** The ragdoll from its hips frame (root, before the body offsets), scaled by s. */
-    private static void body(Renderer r, Art art, Driver d, float[] root, float s, boolean legs, boolean head, int tint, float k, float glow) {
+    /** Hat, the hair it leaves showing, and (unless the hat covers it) nothing else: head is the neck frame. */
+    private static void topOfHead(Renderer r, Art art, int[] l, float[] head, int tint, float k, float glow) {
+        int hat = l[Outfits.HAT];
+        int cover = Outfits.HAT_COVER[hat];
+        Mesh hair = cover == 0 ? art.drvHair[l[Outfits.HAIR]] : (cover == 1 ? art.drvHairCapped[l[Outfits.HAIR]] : null);
+        if (hair != null) {
+            int hc = ice(Outfits.COLOR[Outfits.HAIR][l[Outfits.HAIR]], tint, k);
+            r.draw(hair, head, hc, hc, glow);
+        }
+        if (art.drvHat[hat] != null) {
+            int c = ice(Outfits.COLOR[Outfits.HAT][hat], tint, k);
+            r.draw(art.drvHat[hat], head, c, c, glow);
+        }
+    }
+
+    /**
+     * The ragdoll from its hips frame (root, before the body offsets), scaled by s. head = false leaves out the
+     * torso, the head and the legs (the hood camera sits there): just the arms.
+     */
+    private static void body(Renderer r, Art art, Driver d, float[] root, float s, boolean legs, boolean head, int face,
+                             int tint, float k, float glow) {
         float[] p = d.pos;
         int[] l = d.look;
         int skin = ice(Outfits.COLOR[Outfits.SKIN][l[Outfits.SKIN]], tint, k);
@@ -83,24 +107,13 @@ public final class DriverRenderer {
         // torso
         M4.trs(LOCAL, 0, 0, 0, p[Driver.TWIST], p[Driver.LEAN], -p[Driver.SIDE], 1, 1, 1);
         M4.mul(TORSO, HIPS, LOCAL);
-        r.draw(art.drvTorso[shirtI], TORSO, pants, shirt, glow);
-
         if (head) {
+            r.draw(art.drvTorso[shirtI], TORSO, pants, shirt, glow);
             M4.trs(LOCAL, 0, Driver.NECK_Y, 0, p[Driver.LOOK], p[Driver.NOD], -p[Driver.TILT], 1, 1, 1);
             M4.mul(HEAD, TORSO, LOCAL);
             r.draw(art.drvHead, HEAD, skin, skin, glow);
-            int hat = l[Outfits.HAT];
-            if (!Outfits.HAT_FACE[hat]) r.draw(art.drvFace[l[Outfits.FACE]], HEAD, skin, skin, glow);
-            int cover = Outfits.HAT_COVER[hat];
-            Mesh hair = cover == 0 ? art.drvHair[l[Outfits.HAIR]] : (cover == 1 ? art.drvHairCapped[l[Outfits.HAIR]] : null);
-            if (hair != null) {
-                int hc = ice(Outfits.COLOR[Outfits.HAIR][l[Outfits.HAIR]], tint, k);
-                r.draw(hair, HEAD, hc, hc, glow);
-            }
-            if (art.drvHat[hat] != null) {
-                int c = ice(Outfits.COLOR[Outfits.HAT][hat], tint, k);
-                r.draw(art.drvHat[hat], HEAD, c, c, glow);
-            }
+            if (!Outfits.HAT_FACE[l[Outfits.HAT]]) r.draw(art.drvFace[face], HEAD, skin, skin, glow);
+            topOfHead(r, art, l, HEAD, tint, k, glow);
         }
 
         // arms (+1 = its left, -1 = its right; the right hand holds the thing)
@@ -112,14 +125,14 @@ public final class DriverRenderer {
             M4.trs(LOCAL, 0, -Driver.UPPER_ARM, 0, 0, -p[a + 2], 0, 1, 1, 1);
             M4.mul(JOINT, LIMB, LOCAL);
             r.draw(art.drvForearm, JOINT, skin, lower, glow);
-            if (side < 0 && art.drvHeld[l[Outfits.HELD]] != null && head) {
+            if (side < 0 && head && art.drvHeld[l[Outfits.HELD]] != null) {
                 M4.postTranslate(JOINT, 0, -Driver.FOREARM, 0);
                 M4.postRotZ(JOINT, PI);
                 r.draw(art.drvHeld[l[Outfits.HELD]], JOINT, 0xFFFFFF, 0xFFFFFF, glow);
             }
         }
 
-        if (!legs) return;
+        if (!legs || !head) return;
         int style = Outfits.PANTS_STYLE[pantsI];
         int shin = Outfits.SHORTS[pantsI] ? skin : pants;
         int shoeI = l[Outfits.SHOES];

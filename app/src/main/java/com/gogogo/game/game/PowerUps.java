@@ -433,6 +433,8 @@ public final class PowerUps {
         c.squashV += 9f;
         c.slipT = SLIP_TIME;
         c.boostT = 0f;
+        if (by != null) c.jolt(hop * 3f, by.x - c.x, by.z - c.z);
+        else c.jolt(hop * 3f, 0f, 0f);
         if (by != null) {
             c.lastHitBy = by.index;
             c.lastHitTime = m.time;

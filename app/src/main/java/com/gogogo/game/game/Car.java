@@ -95,6 +95,8 @@ public final class Car {
         mass = 0.9f + we * 0.18f;
         manualTurn = 2.3f + gr * 0.22f;
         radius = 1.08f;
+        driver.style = def.seatStyle;
+        driver.spread = def.seatSpread;
     }
 
     public void setLook(int paint, int accent, int topper, int wheel) {
@@ -289,6 +291,18 @@ public final class Car {
 
     // ------------------------------------------------------------------ power-up effects
 
+    /** A knock from (fromX, fromZ) (a world direction, any length) shakes the driver up. */
+    public void jolt(float strength, float fromX, float fromZ) {
+        float l = (float) Math.sqrt(fromX * fromX + fromZ * fromZ);
+        float fx = (float) Math.sin(yaw), fz = (float) Math.cos(yaw);
+        float dx = 0f, dz = 0f;
+        if (l > 1e-4f) {
+            dx = (fromX * fz - fromZ * fx) / l;
+            dz = (fromX * fx + fromZ * fz) / l;
+        }
+        driver.jolt(strength, dx, dz);
+    }
+
     /** Super jump: up into a long floaty arc. Also works in the first moments of a fall (cancels it). */
     public void superJump() {
         if (falling) {
@@ -316,6 +330,7 @@ public final class Car {
         boostT = 0f;
         wantBoost = false;
         stickyT = 0f;
+        driver.startle();
     }
 
     /** One step in the air: limited air control, a floaty arc, landing or falling at the bottom of it. */

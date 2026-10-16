@@ -13,7 +13,7 @@ public final class Achievements {
 
     // ---- values computed from the save
     private static final int V_MATCHES = 100, V_WINS = 101, V_TIES = 102, V_ROUNDS = 103, V_BONKS = 104, V_LEVEL = 105,
-            V_CARS = 106, V_COIN_CARS = 107, V_MAXED = 108, V_COSMETICS = 109, V_MAPS = 110;
+            V_CARS = 106, V_COIN_CARS = 107, V_MAXED = 108, V_COSMETICS = 109, V_MAPS = 110, V_WARDROBE = 111;
 
     private static final Object[][] DEFS = {
             // name, description, stat, goal, xp, coins, rims
@@ -55,6 +55,8 @@ public final class Achievements {
             {"PIGGY BANK", "Earn 10,000 coins in matches", ST_COINS_EARNED, 10000, 200, 0, 10},
             {"UNDERDOG", "Win a match with the BUMPER BEAN", ST_BEAN_WINS, 1, 200, 500, 0},
             {"SHOPAHOLIC", "Buy 20 things", ST_PURCHASES, 20, 150, 300, 0},
+            {"DRESSED UP", "Own 10 things for your driver", V_WARDROBE, 10, 150, 300, 0},
+            {"STYLE ICON", "Own 40 things for your driver", V_WARDROBE, 40, 400, 1000, 15},
     };
 
     public static final int COUNT = DEFS.length;
@@ -128,6 +130,14 @@ public final class Achievements {
             }
             case V_MAPS:
                 return Integer.bitCount(s.stats[ST_MAPS_MASK]);
+            case V_WARDROBE: {
+                // everything but the free basics
+                int n = 0;
+                for (int k = 0; k < Outfits.PARTS; k++) {
+                    for (int i = 0; i < s.lookOwned[k].length; i++) if (s.lookOwned[k][i] && Outfits.RULE[k][i] != Items.FREE) n++;
+                }
+                return n;
+            }
             default:
                 return stat >= 0 && stat < STATS ? s.stats[stat] : 0;
         }

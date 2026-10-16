@@ -194,15 +194,6 @@ public final class Save {
         if (!skyOwned[sky]) sky = 0;
         if (!themeOwned[theme]) theme = 0;
         if (!trailOwned[trail]) trail = 0;
-        // the driver (profiles from before drivers keep the default look)
-        for (int k = 0; k < Outfits.PARTS; k++) bits(p.getProperty("dr" + k), lookOwned[k]);
-        String lk = p.getProperty("look");
-        if (lk != null) {
-            String[] t = lk.split(",");
-            for (int k = 0; k < Outfits.PARTS && k < t.length; k++) look[k] = parse(t[k], look[k]);
-            Outfits.sanitize(look);
-            for (int k = 0; k < Outfits.PARTS; k++) if (!lookOwned[k][look[k]]) look[k] = 0;
-        }
         sound = geti(p, "sound", 1) == 1;
         music = geti(p, "music", 1) == 1;
         vibration = geti(p, "vib", 1) == 1;
@@ -229,6 +220,21 @@ public final class Save {
             // profile from before levels existed: credit the matches already played
             xp = Math.min(Levels.xpAt(50), matches * 40 + wins * 80 + bonks * 8 + roundsSurvived * 4);
             rewardedLevel = 1;
+        }
+        // the driver (profiles from before drivers get the default look); wardrobe level rewards of levels passed
+        // before they existed are handed out here
+        for (int k = 0; k < Outfits.PARTS; k++) {
+            bits(p.getProperty("dr" + k), lookOwned[k]);
+            for (int i = 0; i < lookOwned[k].length; i++) {
+                if (Outfits.RULE[k][i] == Items.LEVEL && Outfits.VALUE[k][i] <= rewardedLevel) lookOwned[k][i] = true;
+            }
+        }
+        String lk = p.getProperty("look");
+        if (lk != null) {
+            String[] t = lk.split(",");
+            for (int k = 0; k < Outfits.PARTS && k < t.length; k++) look[k] = parse(t[k], look[k]);
+            Outfits.sanitize(look);
+            for (int k = 0; k < Outfits.PARTS; k++) if (!lookOwned[k][look[k]]) look[k] = Outfits.first(k);
         }
         dev = geti(p, "x1", 0) == 1;
         bits(p.getProperty("x2"), devFlags);

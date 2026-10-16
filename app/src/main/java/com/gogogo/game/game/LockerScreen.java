@@ -409,8 +409,11 @@ public final class LockerScreen extends Screen {
                 }
                 break;
             }
-            default:
+            case Items.TRAIL:
                 trailIcon(game, cx, cy, s, i, t);
+                break;
+            default:
+                DriverScreen.icon(game, cat - Items.HAT, i, cx, cy, s, t);
                 break;
         }
     }

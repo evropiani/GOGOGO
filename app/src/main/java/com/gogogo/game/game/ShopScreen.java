@@ -211,9 +211,10 @@ public final class ShopScreen extends Screen {
         return 0;
     }
 
-    /** Jumps to where the item can be bought: the garage for car stuff, the locker for the rest. */
+    /** Jumps to where the item can be bought: the garage for car stuff, the driver's wardrobe, the locker for the rest. */
     private void open(int cat, int idx) {
         if (cat <= Items.WHEEL) game.setScreen(new GarageScreen(game).focus(cat, idx));
+        else if (Items.outfit(cat)) game.setScreen(new DriverScreen(game).focus(cat, idx));
         else game.setScreen(new LockerScreen(game, cat - Items.MAP).focus(idx));
     }
 

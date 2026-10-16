@@ -17,13 +17,14 @@ public final class DriverRenderer {
     private static final float[] HIPS = new float[16], TORSO = new float[16], HEAD = new float[16], LIMB = new float[16],
             JOINT = new float[16], LOCAL = new float[16], M = new float[16];
     private static final float PI = (float) Math.PI;
+    /** Things in hand are drawn a bit bigger than life: readable from the chase camera. */
+    private static final float HELD_SCALE = 1.3f;
 
     /**
-     * A driver in its car. seat is the car's body transform (without its squash) moved to the seat; head = false
-     * is for the car the hood camera sits on: only the hands on the wheel are drawn. tint / tintK: frozen cars pass
-     * their icy tint on; glow: flashing cars.
+     * A driver in its car. seat is the car's body transform (without its squash) moved to the seat. tint / tintK:
+     * frozen cars pass their icy tint on; glow: flashing cars.
      */
-    static void seated(Renderer r, Art art, Car c, float[] seat, int lod, boolean head, int tint, float tintK, float glow) {
+    static void seated(Renderer r, Art art, Car c, float[] seat, int lod, int tint, float tintK, float glow) {
         Driver d = c.driver;
         CarDef def = c.def;
         float s = def.seatScale;
@@ -40,32 +41,30 @@ public final class DriverRenderer {
             topOfHead(r, art, l, M, tint, tintK, glow);
             return;
         }
-        if (head) {
-            // the steering wheel stays with the car (it turns with the front wheels)
-            M4.copy(seat, M);
-            M4.postTranslate(M, 0, Driver.WHEEL_Y * s, Driver.WHEEL_Z * s);
-            M4.postRotX(M, -Driver.WHEEL_TILT);
-            M4.postRotY(M, -c.steerVis * 2.5f);
-            M4.postScale(M, s, s, s);
-            r.draw(art.steeringWheel, M, 0xFFFFFF, 0xFFFFFF, glow);
-        }
+        // the steering wheel stays with the car (it turns with the front wheels)
+        M4.copy(seat, M);
+        M4.postTranslate(M, 0, Driver.WHEEL_Y * s, Driver.WHEEL_Z * s);
+        M4.postRotX(M, -Driver.WHEEL_TILT);
+        M4.postRotY(M, -c.steerVis * 2.5f);
+        M4.postScale(M, s, s, s);
+        r.draw(art.steeringWheel, M, 0xFFFFFF, 0xFFFFFF, glow);
         boolean legs = !def.legsHidden() || p[Driver.RISE] > Driver.LEGS_OUT;
         int face = c.frozenT > 0 ? Outfits.FC_SHOCKED : d.faceShown();
-        body(r, art, d, seat, s, legs, head, face, tint, tintK, glow);
+        body(r, art, d, seat, s, legs, face, tint, tintK, glow);
     }
 
     /** A driver standing on the floor at (x, y, z) facing yaw, scale s (showrooms, the results). */
     public static void standing(Renderer r, Art art, Driver d, float x, float y, float z, float yaw, float s, float glow) {
         if (d.hidden) return;
         M4.trs(M, x, y + Driver.STAND_Y * s, z, yaw, 0, 0, 1, 1, 1);
-        body(r, art, d, M, s, true, true, d.faceShown(), 0, 0f, glow);
+        body(r, art, d, M, s, true, d.faceShown(), 0, 0f, glow);
     }
 
     /** A driver flung out of its car, tumbling through the air. */
     static void flung(Renderer r, Art art, Driver d, int lod) {
         if (d.wy < -90f || lod == NONE) return;
         M4.trs(M, d.wx, d.wy, d.wz, d.wYaw, d.wPitch, d.wRoll, 1, 1, 1);
-        body(r, art, d, M, d.scale, true, true, Outfits.FC_SHOCKED, 0, 0f, 0f);
+        body(r, art, d, M, d.scale, true, Outfits.FC_SHOCKED, 0, 0f, 0f);
     }
 
     /** Hat, the hair it leaves showing, and (unless the hat covers it) nothing else: head is the neck frame. */
@@ -83,11 +82,8 @@ public final class DriverRenderer {
         }
     }
 
-    /**
-     * The ragdoll from its hips frame (root, before the body offsets), scaled by s. head = false leaves out the
-     * torso, the head and the legs (the hood camera sits there): just the arms.
-     */
-    private static void body(Renderer r, Art art, Driver d, float[] root, float s, boolean legs, boolean head, int face,
+    /** The ragdoll from its hips frame (root, before the body offsets), scaled by s. */
+    private static void body(Renderer r, Art art, Driver d, float[] root, float s, boolean legs, int face,
                              int tint, float k, float glow) {
         float[] p = d.pos;
         int[] l = d.look;
@@ -107,14 +103,12 @@ public final class DriverRenderer {
         // torso
         M4.trs(LOCAL, 0, 0, 0, p[Driver.TWIST], p[Driver.LEAN], -p[Driver.SIDE], 1, 1, 1);
         M4.mul(TORSO, HIPS, LOCAL);
-        if (head) {
-            r.draw(art.drvTorso[shirtI], TORSO, pants, shirt, glow);
-            M4.trs(LOCAL, 0, Driver.NECK_Y, 0, p[Driver.LOOK], p[Driver.NOD], -p[Driver.TILT], 1, 1, 1);
-            M4.mul(HEAD, TORSO, LOCAL);
-            r.draw(art.drvHead, HEAD, skin, skin, glow);
-            if (!Outfits.HAT_FACE[l[Outfits.HAT]]) r.draw(art.drvFace[face], HEAD, skin, skin, glow);
-            topOfHead(r, art, l, HEAD, tint, k, glow);
-        }
+        r.draw(art.drvTorso[shirtI], TORSO, pants, shirt, glow);
+        M4.trs(LOCAL, 0, Driver.NECK_Y, 0, p[Driver.LOOK], p[Driver.NOD], -p[Driver.TILT], 1, 1, 1);
+        M4.mul(HEAD, TORSO, LOCAL);
+        r.draw(art.drvHead, HEAD, skin, skin, glow);
+        if (!Outfits.HAT_FACE[l[Outfits.HAT]]) r.draw(art.drvFace[face], HEAD, skin, skin, glow);
+        topOfHead(r, art, l, HEAD, tint, k, glow);
 
         // arms (+1 = its left, -1 = its right; the right hand holds the thing)
         for (int side = 1; side >= -1; side -= 2) {
@@ -125,14 +119,16 @@ public final class DriverRenderer {
             M4.trs(LOCAL, 0, -Driver.UPPER_ARM, 0, 0, -p[a + 2], 0, 1, 1, 1);
             M4.mul(JOINT, LIMB, LOCAL);
             r.draw(art.drvForearm, JOINT, skin, lower, glow);
-            if (side < 0 && head && art.drvHeld[l[Outfits.HELD]] != null) {
+            if (side < 0 && art.drvHeld[l[Outfits.HELD]] != null) {
+                // gripped across the fist: it stands up when the forearm points forward
                 M4.postTranslate(JOINT, 0, -Driver.FOREARM, 0);
-                M4.postRotZ(JOINT, PI);
+                M4.postRotX(JOINT, PI / 2);
+                M4.postScale(JOINT, HELD_SCALE, HELD_SCALE, HELD_SCALE);
                 r.draw(art.drvHeld[l[Outfits.HELD]], JOINT, 0xFFFFFF, 0xFFFFFF, glow);
             }
         }
 
-        if (!legs || !head) return;
+        if (!legs) return;
         int style = Outfits.PANTS_STYLE[pantsI];
         int shin = Outfits.SHORTS[pantsI] ? skin : pants;
         int shoeI = l[Outfits.SHOES];

@@ -149,6 +149,12 @@ public final class Outfits {
         if (g.chance(0.45f)) look[HELD] = HD_NONE;
     }
 
+    /** The first free item of a part (what a look falls back to). */
+    public static int first(int part) {
+        for (int i = 0; i < count(part); i++) if (RULE[part][i] == Items.FREE) return i;
+        return 0;
+    }
+
     /** Clamps a loaded look into range. */
     public static void sanitize(int[] look) {
         for (int p = 0; p < PARTS; p++) {

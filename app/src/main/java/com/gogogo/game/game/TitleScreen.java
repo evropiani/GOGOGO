@@ -108,13 +108,19 @@ public final class TitleScreen extends Screen {
         }
         mapChip(b, ui, rx, by + 120);
         float sy = by + 160;
-        if (ui.button("garage", rx - 280, sy, 270, 104, 0xFF8E62FF, "GARAGE", 46f)) {
+        // garage, driver and locker share the row
+        float qw = 176, qg = 11;
+        if (ui.button("garage", rx - 280, sy, qw, 104, 0xFF8E62FF, "GARAGE", 40f)) {
             game.setScreen(new GarageScreen(game));
         }
-        if (ui.button("locker", rx + 10, sy, 270, 104, 0xFFFF4FA3, "LOCKER", 46f)) {
+        if (ui.button("driver", rx - 280 + qw + qg, sy, qw, 104, 0xFF2EBFB0, "DRIVER", 40f)) {
+            game.setScreen(new DriverScreen(game));
+        }
+        if (ui.button("locker", rx - 280 + (qw + qg) * 2, sy, qw, 104, 0xFFFF4FA3, "LOCKER", 40f)) {
             game.setScreen(new LockerScreen(game, LockerScreen.SKINS));
         }
-        if (canAffordSomething(game.save)) alertDot(b, rx - 24, sy + 6, t);
+        if (canAffordSomething(game.save)) alertDot(b, rx - 280 + qw - 4, sy + 6, t);
+        if (DriverScreen.canAffordSomething(game.save)) alertDot(b, rx - 280 + qw * 2 + qg - 4, sy + 6, t + 0.2f);
         if (canAffordLocker(game.save)) alertDot(b, rx + 266, sy + 6, t + 0.4f);
         float sy2 = sy + 118;
         if (ui.iconButton("awards", rx - 280, sy2, 270, 80, 0xFFFFB321, null, UI.ICON_STAR, "AWARDS", 38f, true)) {

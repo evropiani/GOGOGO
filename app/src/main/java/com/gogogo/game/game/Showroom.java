@@ -22,6 +22,13 @@ public final class Showroom {
     public float distance = 17f;
     public float height = 7f;
 
+    /**
+     * A driver standing on the pedestal next to the car (the car's own seat stays empty), or null. Placed by
+     * standX / standZ and the car by carX / carZ (pedestal space), the car turned by carYaw; both turn with it.
+     */
+    public Driver stand;
+    public float standX, standZ, standYaw, standScale = 1f, carX, carZ, carYaw;
+
     public Showroom(Game game) {
         this.game = game;
     }
@@ -65,6 +72,7 @@ public final class Showroom {
         car.topZ += car.topVZ * dt;
         car.wheelSpin += dt * 2f;
         car.driver.idle(dt);
+        if (stand != null) stand.idle(dt);
     }
 
     public void render() {
@@ -82,12 +90,21 @@ public final class Showroom {
         game.beginWorld();
         M4.trs(m, 0, 0, 0, spin * 0.3f, 0, 0, 1, 1, 1);
         game.r.draw(game.art.pedestal, m, pedestalColor, pedestalAccent, 0f);
+        float cs = (float) Math.cos(spin), sn = (float) Math.sin(spin);
         if (car != null) {
-            car.yaw = spin;
+            car.yaw = spin + carYaw;
+            car.x = carX * cs + carZ * sn;
+            car.z = -carX * sn + carZ * cs;
             float y = drop > 0 ? Ease.inCubic(drop) * 12f : 0f;
             car.y = y;
+            car.driver.hidden = stand != null;
             CarRenderer.draw(game.r, game.art, car, time, base, m);
-            game.r.blob(0, 0.03f, 0, 1.6f, 1.3f, spin, 0.45f * (1f - Math.min(1f, y / 8f)));
+            game.r.blob(car.x, 0.03f, car.z, 1.6f, 1.3f, car.yaw, 0.45f * (1f - Math.min(1f, y / 8f)));
+        }
+        if (stand != null) {
+            float x = standX * cs + standZ * sn, z = -standX * sn + standZ * cs;
+            DriverRenderer.standing(game.r, game.art, stand, x, 0f, z, spin + standYaw, standScale, 0f);
+            game.r.blob(x, 0.03f, z, 0.55f * standScale, 1f, 0f, 0.4f);
         }
         fx.draw(game.r, game.art);
     }

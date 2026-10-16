@@ -192,7 +192,7 @@ public final class MatchScreen extends Screen {
                     powerHintT = 0f;
                     if (v == PowerUps.NITRO) {
                         stopRoar();
-                        roarStream = s.start(Sfx.NITRO_ROAR, 0.8f, 1f);
+                        roarStream = s.start(Sfx.NITRO_ROAR, 0.6f, 1f);
                         roarT = 0f;
                     }
                 }

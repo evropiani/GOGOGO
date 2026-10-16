@@ -73,6 +73,8 @@ public final class Car {
     public int lastHitPower = -1;
     /** Power-ups picked up and used, falls saved by a super jump, and nitros fired, this match. */
     public int pickups, powersUsed, rescues, nitros;
+    /** Cars knocked off by ramming them while burning nitro, this match. */
+    public int nitroBonks;
 
     public Car(int index, CarDef def, String name, boolean isPlayer, int[] lv) {
         this.index = index;
@@ -112,6 +114,7 @@ public final class Car {
         if (falling) {
             justBoosted = false;
             wantBoost = false;
+            nitroT = 0f; // a fall puts the fire out (this also catches coming down from a super jump over nothing)
             fallT += dt;
             vy -= Arena.GRAVITY * dt;
             y += vy * dt;
@@ -264,7 +267,7 @@ public final class Car {
 
         if (!god && !arena.supported(x, z)) {
             falling = true;
-            nitroT = 0f; // a fall puts the fire out
+            nitroT = 0f;
             vy = Math.min(0f, vy);
             spinX = (float) (Math.random() * 6 - 3) + fwd * 0.2f;
             spinZ = (float) (Math.random() * 6 - 3);
@@ -394,7 +397,6 @@ public final class Car {
             }
             // nothing underneath: down it goes
             falling = true;
-            nitroT = 0f;
             fallT = 0f;
             spinX = (float) (Math.random() * 6 - 3);
             spinZ = (float) (Math.random() * 6 - 3);

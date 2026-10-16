@@ -26,6 +26,8 @@ public final class Progress {
     public static final class MatchResult {
         public boolean won, tied, hoodCam;
         public int place, total, rounds, bonks, boosts, clutches, map, car, coins;
+        /** Power-ups used, nitros among them, and cars knocked off by a nitro ram. */
+        public int powers, nitros, nitroBonks;
     }
 
     /** What a match (or anything else) changed: XP, levels, rewards, achievements. */
@@ -71,6 +73,9 @@ public final class Progress {
         if (r.won && r.car == 0) st[Achievements.ST_BEAN_WINS]++;
         st[Achievements.ST_COINS_EARNED] += r.coins;
         if (r.map >= 0 && r.map < 31) st[Achievements.ST_MAPS_MASK] |= 1 << r.map;
+        st[Achievements.ST_POWERS] += r.powers;
+        st[Achievements.ST_NITROS] += r.nitros;
+        st[Achievements.ST_NITRO_BONKS] += r.nitroBonks;
         o.xpGained = xpFor(r);
         s.xp += o.xpGained;
         settle(s, o);

@@ -137,7 +137,8 @@ public final class MatchView implements Match.Listener {
                 break;
             case Match.EV_BONK:
                 if (a == p && !quiet) {
-                    pop("BONKED " + b.name.toUpperCase() + "!", a.x, 3.5f, a.z, 0xFFFF4FA3);
+                    boolean torched = b.lastHitPower == PowerUps.NITRO;
+                    pop((torched ? "TORCHED " : "BONKED ") + b.name.toUpperCase() + "!", a.x, 3.5f, a.z, torched ? 0xFFFF6A3A : 0xFFFF4FA3);
                     s.play(Sfx.COIN, 0.8f, 1.2f);
                 }
                 break;
@@ -437,10 +438,10 @@ public final class MatchView implements Match.Listener {
                 float bx = a.x - fx0 * 1.8f, bz = a.z - fz0 * 1.8f;
                 for (int k = 0; k < 12; k++) {
                     int i = fx.spawn(Particles.BALL, bx + rnd(0.4f), a.y + 0.6f + rnd(0.3f), bz + rnd(0.4f), -fx0 * 7f + rnd(2.5f),
-                            1f + (float) Math.random() * 2f, -fz0 * 7f + rnd(2.5f), 0.35f + (float) Math.random() * 0.3f,
+                            1f + (float) Math.random() * 2f, -fz0 * 7f + rnd(2.5f), 0.25f + (float) Math.random() * 0.22f,
                             0.35f + (float) Math.random() * 0.25f, NITRO_CORE, -1.5f);
-                    fx.fade(i, 0xFF2A0A);
-                    fx.glow(i, 0.25f);
+                    fx.fade(i, NITRO_EMBER);
+                    fx.glow(i, 0.15f);
                     fx.drag(i, 3f);
                 }
                 wave(bx, a.y + 0.5f, bz, 2.6f, 0.3f, PowerUps.COLOR[PowerUps.NITRO]);
@@ -529,9 +530,9 @@ public final class MatchView implements Match.Listener {
                 float side = (Math.random() < 0.5 ? -1f : 1f) * Math.max(0.25f, c.def.wheelX * 0.42f);
                 float ex = c.x + fx0 * back + fz0 * side, ez = c.z + fz0 * back - fx0 * side;
                 int k = fx.spawn(Particles.BALL, ex, c.y + c.def.wheelR + rnd(0.1f), ez, c.vx * 0.4f - fx0 * 3f + rnd(1f), 0.8f + (float) Math.random(),
-                        c.vz * 0.4f - fz0 * 3f + rnd(1f), 0.3f + (float) Math.random() * 0.25f, 0.25f + (float) Math.random() * 0.15f, NITRO_CORE, -1f);
-                fx.fade(k, 0xFF3A0A);
-                fx.glow(k, 0.2f);
+                        c.vz * 0.4f - fz0 * 3f + rnd(1f), 0.2f + (float) Math.random() * 0.18f, 0.25f + (float) Math.random() * 0.15f, NITRO_CORE, -1f);
+                fx.fade(k, NITRO_EMBER);
+                fx.glow(k, 0.15f);
                 fx.drag(k, 4f);
             }
             if (c.airborne && c != hoodCar && Math.random() < 0.5 && isNear(c.x, c.z, 40f)) {
@@ -605,8 +606,8 @@ public final class MatchView implements Match.Listener {
         r.draw(art.ring, m, col, col, 0.45f);
     }
 
-    /** Nitro flame colors: the outer flame and its hot core. */
-    static final int NITRO_FLAME = 0xFF5A1F, NITRO_CORE = 0xFFF0A0;
+    /** Nitro fire colors: the outer flame, its hot core, and what the sparks cool down to. */
+    static final int NITRO_FLAME = 0xFF6A1F, NITRO_CORE = 0xFFD23B, NITRO_EMBER = 0xFF3A12;
 
     /**
      * Nitro: two flickering flames out of the back of the body and speed streaks sliding back along its sides
@@ -626,7 +627,7 @@ public final class MatchView implements Match.Listener {
                 M4.copy(base, m);
                 M4.postTranslate(m, s * sx, y, back);
                 M4.postScale(m, w, w, len);
-                r.draw(art.flame, m, NITRO_FLAME, NITRO_CORE, 0.55f);
+                r.draw(art.flame, m, NITRO_FLAME, NITRO_CORE, 0.3f);
             }
         }
         if (sp < 6f) return;

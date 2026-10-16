@@ -8,7 +8,8 @@ public final class Achievements {
 
     // ---- stored counters (Save.stats)
     public static final int ST_TOP10 = 0, ST_TOP3 = 1, ST_BEST_ROUNDS = 2, ST_BEST_BONKS = 3, ST_BOOSTS = 4, ST_CLUTCH = 5,
-            ST_HOOD_WINS = 6, ST_COINS_EARNED = 7, ST_BEAN_WINS = 8, ST_MAPS_MASK = 9, ST_PURCHASES = 10;
+            ST_HOOD_WINS = 6, ST_COINS_EARNED = 7, ST_BEAN_WINS = 8, ST_MAPS_MASK = 9, ST_PURCHASES = 10,
+            ST_POWERS = 11, ST_NITROS = 12, ST_NITRO_BONKS = 13;
     public static final int STATS = 16;
 
     // ---- values computed from the save
@@ -55,6 +56,11 @@ public final class Achievements {
             {"PIGGY BANK", "Earn 10,000 coins in matches", ST_COINS_EARNED, 10000, 200, 0, 10},
             {"UNDERDOG", "Win a match with the BUMPER BEAN", ST_BEAN_WINS, 1, 200, 500, 0},
             {"SHOPAHOLIC", "Buy 20 things", ST_PURCHASES, 20, 150, 300, 0},
+            // (new ones go at the end: saves keep which ones are done by position)
+            {"POWER HUNGRY", "Use 100 power-ups", ST_POWERS, 100, 200, 500, 10},
+            {"NITRO JUNKIE", "Use nitro 25 times", ST_NITROS, 25, 150, 400, 0},
+            {"AFTERBURNER", "Ram a car off the arena while burning nitro", ST_NITRO_BONKS, 1, 100, 250, 0},
+            {"ROAD RAGE", "Ram 10 cars off while burning nitro", ST_NITRO_BONKS, 10, 300, 800, 10},
     };
 
     public static final int COUNT = DEFS.length;

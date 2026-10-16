@@ -27,9 +27,9 @@ public final class Bot {
         this.skill = skill;
         float dull = 1f - skill;
         // every trait follows the skill with a bit of its own luck, so two bots of the same skill still differ
-        reaction = (0.17f + 0.9f * dull * (float) Math.sqrt(dull)) * rng.range(0.8f, 1.2f);
+        reaction = (0.16f + 0.85f * dull * dull) * rng.range(0.8f, 1.2f);
         mistake = 0.15f * dull * dull * rng.range(0.6f, 1.4f);
-        aggression = clamp01(0.4f + rng.range(-0.4f, 0.4f));
+        aggression = clamp01(0.2f + 0.4f * skill + rng.range(-0.35f, 0.35f));
         smarts = clamp01(skill + rng.range(-0.12f, 0.12f));
         wits = clamp01(0.1f + 0.95f * skill + rng.range(-0.12f, 0.12f));
         jumpLead = rng.range(0.1f, 0.3f + 0.5f * dull);
@@ -41,14 +41,15 @@ public final class Bot {
     public static float randomSkill(Rng rng) {
         float r = rng.f();
         if (r < 0.12f) return rng.range(0f, 0.2f);
-        if (r > 0.94f) return rng.range(0.82f, 1f);
+        if (r > 0.92f) return rng.range(0.8f, 1f);
         return 0.15f + 0.6f * (rng.f() + rng.f() + rng.f()) / 3f;
     }
 
     /** Upgrade level (0..CarDef.MAX_LEVEL) of one stat of a bot's car: anything goes, but good bots tend to be tuned up. */
     public static int randomLevel(Rng rng, float skill) {
-        float t = clamp01(0.5f * rng.f() + 0.5f * skill + rng.range(-0.15f, 0.15f));
-        return Math.min(CarDef.MAX_LEVEL, (int) (t * t * (CarDef.MAX_LEVEL + 1)));
+        float t = clamp01(0.6f * rng.f() + 0.4f * skill + rng.range(-0.15f, 0.15f));
+        // about 40% stock, then fewer and fewer up to a few fully tuned stats
+        return Math.min(CarDef.MAX_LEVEL, (int) ((float) Math.pow(t, 2.2) * (CarDef.MAX_LEVEL + 2)));
     }
 
     private static float clamp01(float v) {
@@ -380,11 +381,6 @@ public final class Bot {
             return;
         }
         float ax = aim, az = aim2;
-        if (!rush) {
-            // holding on to an island: good drivers keep to its middle
-            ax *= sloppy;
-            az *= sloppy;
-        }
         if (t.edge) {
             // park on the side away from the drop
             Arena a = m.arena;

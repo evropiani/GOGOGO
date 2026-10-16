@@ -78,6 +78,9 @@ public final class ResultsScreen extends Screen {
         r.car = p.def.id;
         r.hoodCam = m.hoodWin;
         r.coins = sum;
+        r.powers = p.powersUsed;
+        r.nitros = p.nitros;
+        r.nitroBonks = p.nitroBonks;
         if (counts) {
             outcome = Progress.commitMatch(s, r);
         } else {

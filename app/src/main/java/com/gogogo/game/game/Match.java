@@ -343,6 +343,7 @@ public final class Match {
                     Car k = cars[c.lastHitBy];
                     if (k.alive) {
                         k.bonks++;
+                        if (c.lastHitPower == PowerUps.NITRO) k.nitroBonks++;
                         emit(EV_BONK, k, c, 0);
                     }
                 }
@@ -455,7 +456,8 @@ public final class Match {
                 float vrel = (b.vx - a.vx) * nx + (b.vz - a.vz) * nz;
                 if (vrel < 0) {
                     boolean boost = a.boostT > 0 || b.boostT > 0;
-                    float factor = boost ? 2.3f : 1.15f;
+                    boolean nitro = a.nitroT > 0 || b.nitroT > 0;
+                    float factor = boost ? 2.3f : (nitro ? 1.15f * PowerUps.NITRO_RAM : 1.15f);
                     float j0 = -(1f + 0.55f) * vrel / tot * factor;
                     j0 += 0.5f / tot; // always a little bouncy
                     a.vx -= j0 * ia * nx;
@@ -464,12 +466,13 @@ public final class Match {
                     b.vz += j0 * ib * nz;
                     float strength = -vrel * factor;
                     if (strength > 3f) {
+                        // (rammed by a car burning nitro counts as a nitro hit)
                         a.lastHitBy = b.index;
                         a.lastHitTime = time;
-                        a.lastHitPower = -1;
+                        a.lastHitPower = b.nitroT > 0 ? PowerUps.NITRO : -1;
                         b.lastHitBy = a.index;
                         b.lastHitTime = time;
-                        b.lastHitPower = -1;
+                        b.lastHitPower = a.nitroT > 0 ? PowerUps.NITRO : -1;
                         float hop = Math.min(5f, strength * 0.25f);
                         if (a.hop <= 0) a.hopV = hop * ib / tot * 2f;
                         if (b.hop <= 0) b.hopV = hop * ia / tot * 2f;

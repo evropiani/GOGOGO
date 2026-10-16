@@ -289,8 +289,8 @@ public final class Bot {
             }
             c.inX = dx / d;
             c.inZ = dz / d;
-            // don't ram yourself off the edge (good drivers look further ahead, more so at speed),
-            // and only boost into someone with floor behind them
+            // don't ram yourself off the edge (good drivers look further ahead, more so at speed), and only boost
+            // into someone with floor behind them (good drivers also make sure they won't fly off after them)
             float look = 2.5f + skill * (1.5f + c.speed() * 0.12f);
             float ex = c.x + c.inX * look, ez = c.z + c.inZ * look;
             if (m.arena.cellAt(ex, ez) != here) {

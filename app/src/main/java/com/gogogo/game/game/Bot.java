@@ -133,18 +133,20 @@ public final class Bot {
 
     /**
      * Nitro: lined up for a long straight run to the goal (or running late), with nothing but floor in between;
-     * the rough ones also floor it when somebody stands in the way.
+     * the rough ones also floor it when somebody stands in the way. The clueless ones sometimes just floor it.
      */
     private boolean nitroRun(Match m, Car c) {
+        if (m.phase != Match.SHOW || c.nitroT > 0 || thinkT > 0) return false;
+        if (wits < 0.4f && m.rng.chance((0.4f - wits) * 0.05f)) return true;
         Arena.Tile g = goal;
-        if (m.phase != Match.SHOW || c.nitroT > 0 || g == null || g.state != Arena.PRESENT || thinkT > 0) return false;
+        if (g == null || g.state != Arena.PRESENT) return false;
         float dx = g.x - c.x, dz = g.z - c.z;
         float d = (float) Math.sqrt(dx * dx + dz * dz);
         if (d < 8f) return false;
         float facing = (dx * (float) Math.sin(c.yaw) + dz * (float) Math.cos(c.yaw)) / d;
-        if (facing < 0.93f || !m.arena.clearLine(c.x, c.z, g.x, g.z, 1.2f)) return false;
+        if (facing < 0.9f || !m.arena.clearLine(c.x, c.z, g.x, g.z, 1.2f)) return false;
         float need = d / Math.max(4f, c.maxSpeed);
-        return d > 13f || need > m.timer * 0.5f || (aggression > 0.6f && m.power.snowTarget(c) >= 0);
+        return d > 11f || need > m.timer * 0.5f || (aggression > 0.6f && m.power.snowTarget(c) >= 0);
     }
 
     /** Just started falling while holding a super jump: jump out, if it reacts in time. */

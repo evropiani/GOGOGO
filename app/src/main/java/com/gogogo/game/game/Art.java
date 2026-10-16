@@ -41,6 +41,7 @@ public final class Art {
         for (int i = 0; i < cars.length; i++) {
             m = new MeshBuilder();
             Cars.ALL[i].build(m);
+            Cars.ALL[i].buildHatch(m);
             cars[i] = r.register(m.build());
             placeHoodCamera(Cars.ALL[i], cars[i]);
             carTop[i] = highest(cars[i]);
@@ -125,6 +126,8 @@ public final class Art {
         buildLooks(r);
         // ---- power-ups: see the block after it
         buildPowerUps(r);
+        // ---- drivers and their wardrobe: the last block
+        buildDrivers(r);
     }
 
     /** Puts the hood camera over the middle of the car, just above its roof, so the hood shows below. */
@@ -1098,6 +1101,20 @@ public final class Art {
     public Mesh goo;
     /** Thin flat ring of radius 1 (PRIMARY tints): shockwaves. */
     public Mesh wave;
+    /**
+     * Exhaust flame of a nitro, nozzle at the origin, one unit long towards -z: the hot part near the nozzle takes
+     * the SECONDARY tint, the rest the PRIMARY one.
+     */
+    public Mesh flame;
+    /** How far each car body reaches backwards (most negative z): where the nitro flames come out. */
+    public final float[] carBack = new float[Cars.ALL.length];
+
+    private static float rearmost(Mesh body) {
+        float back = 0f;
+        float[] v = body.vertices;
+        for (int k = 0; k < v.length; k += Mesh.VERTEX_FLOATS) back = Math.min(back, v[k + 2]);
+        return back;
+    }
 
     private void buildPowerUps(Renderer r) {
         MeshBuilder m;
@@ -1134,6 +1151,13 @@ public final class Art {
         m = new MeshBuilder();
         m.paint(1f).torus(0, 0, 0, 1f, 0.045f, 48, 6);
         wave = r.register(m.build());
+
+        m = new MeshBuilder();
+        m.rotateX(-PI / 2); // lathe axis y -> -z
+        m.accent(1f).lathe(new float[]{0, -0.05f, 0.2f, 0f, 0.26f, 0.14f, 0.24f, 0.3f}, 10);
+        m.paint(1f).lathe(new float[]{0.24f, 0.3f, 0.2f, 0.46f, 0.12f, 0.72f, 0, 1f}, 10);
+        flame = r.register(m.build());
+        for (int i = 0; i < cars.length; i++) carBack[i] = rearmost(cars[i]);
     }
 
     private static void buildPowerIcon(MeshBuilder m, int type) {
@@ -1168,11 +1192,1165 @@ public final class Art {
                 m.fixed(0xF6D2FF).ellipsoid(-0.15f, 0.02f, 0.29f, 0.08f, 0.14f, 0.06f, 8);
                 m.fixed(0xF6D2FF).sphere(-0.2f, -0.2f, 0.27f, 0.05f, 6);
                 break;
+            case PowerUps.NITRO: // a nitro bottle, leaning a bit
+                m.push().rotateZ(-0.3f);
+                m.fixed(0xFF3A4A).cylinder(0, -0.52f, 0, 0.27f, 0, 0.72f, 0.1f, 16);
+                m.fixed(0xFF3A4A).ellipsoid(0, 0.2f, 0, 0.27f, 0.17f, 0.27f, 14);
+                m.fixed(0xFFFFFF).cylinder(0, -0.22f, 0, 0.285f, 0, 0.11f, 0.02f, 16);
+                m.fixed(0xFFFFFF).cylinder(0, -0.03f, 0, 0.285f, 0, 0.05f, 0.01f, 16);
+                m.fixed(0xB8203A).cylinder(0, -0.52f, 0, 0.285f, 0, 0.08f, 0.03f, 16);
+                m.fixed(0xC8CCD8).cylinder(0, 0.3f, 0, 0.09f, 0, 0.2f, 0.02f, 10);
+                m.fixed(0xE8ECF4).box(0, 0.53f, 0, 0.34f, 0.08f, 0.1f, 0.03f);
+                m.fixed(0xFFD23B).sphere(0, 0.53f, 0, 0.07f, 8);
+                m.pop();
+                break;
             default: // super bump: a spiky burst
                 m.push().rotateX(PI / 2);
                 m.fixed(0xFF7A1F).extrude(starPoly2(8, 0.62f, 0.36f), -0.12f, 0.12f);
                 m.fixed(0xFFD23B).extrude(starPoly2(8, 0.4f, 0.24f), -0.17f, 0.17f);
                 m.fixed(0xFFFFFF).cylinder(0, 0, 0, 0.12f, -0.2f, 0.2f, 0.04f, 12);
+                m.pop();
+                break;
+        }
+    }
+
+    // ================================================================== drivers and their wardrobe
+    // Built in driver space (see Driver for the skeleton): limbs hang down (-y) from their joint, the head and all
+    // that goes on it are built around the neck. PRIMARY tints the skin (head, hands), an item's own color (hats,
+    // hair, shoes) or the pants (the hips of a torso); SECONDARY the shirt, sleeves, pants legs or bare feet.
+    // Empty items (no hat, bald, empty hands) have no mesh (null).
+
+    /**
+     * Head (skin), upper arm (sleeve), forearm with the hand, a far-away driver in one piece and the cap that stands
+     * in for its hat or hair, the steering wheel.
+     */
+    public Mesh drvHead, drvUpperArm, drvForearm, drvBust, drvBustCap, steeringWheel;
+    /** Pants legs by Outfits.PANTS_STYLE: thighs and shins. */
+    public final Mesh[] drvThigh = new Mesh[3], drvShin = new Mesh[3];
+    public final Mesh[] drvTorso = new Mesh[Outfits.count(Outfits.SHIRT)];
+    public final Mesh[] drvFace = new Mesh[Outfits.count(Outfits.FACE)];
+    /** Hair, and what shows of it under a hat. */
+    public final Mesh[] drvHair = new Mesh[Outfits.count(Outfits.HAIR)], drvHairCapped = new Mesh[Outfits.count(Outfits.HAIR)];
+    public final Mesh[] drvHat = new Mesh[Outfits.count(Outfits.HAT)];
+    /** Shoes around the ankle, toes to +z. */
+    public final Mesh[] drvShoe = new Mesh[Outfits.count(Outfits.SHOES)];
+    /** Things to hold, sticking up out of the fist (+y) with their front to +z. */
+    public final Mesh[] drvHeld = new Mesh[Outfits.count(Outfits.HELD)];
+
+    private static final float HY = Driver.HEAD_Y;
+    private static final int INK = 0x1A1028;
+
+    private void buildDrivers(Renderer r) {
+        MeshBuilder m = new MeshBuilder();
+        // a big round head with ears and a neck
+        m.paint(1f).ellipsoid(0, HY, 0, 0.37f, 0.35f, 0.35f, 20);
+        for (int s = -1; s <= 1; s += 2) m.paint(0.93f).ellipsoid(s * 0.355f, HY - 0.02f, -0.01f, 0.06f, 0.1f, 0.075f, 8);
+        m.paint(0.9f).cylinder(0, -0.06f, 0, 0.11f, 0, 0.12f, 0.03f, 10);
+        drvHead = r.register(m.build());
+
+        m = new MeshBuilder();
+        m.accent(1f).sphere(0, 0, 0, 0.095f, 10);
+        m.accent(1f).cylinder(0, 0, 0, 0.078f, -Driver.UPPER_ARM, 0, 0.03f, 10);
+        drvUpperArm = r.register(m.build());
+
+        m = new MeshBuilder();
+        m.accent(1f).sphere(0, 0, 0, 0.075f, 8);
+        m.accent(1f).cylinder(0, 0, 0, 0.071f, -Driver.FOREARM + 0.05f, 0, 0.02f, 10);
+        m.paint(1f).ellipsoid(0, -Driver.FOREARM, 0.005f, Driver.HAND_R, Driver.HAND_R * 1.05f, Driver.HAND_R * 0.9f, 10);
+        m.paint(0.95f).ellipsoid(0.055f, -Driver.FOREARM + 0.02f, 0.045f, 0.032f, 0.045f, 0.032f, 6);
+        drvForearm = r.register(m.build());
+
+        for (int k = 0; k < 3; k++) {
+            m = new MeshBuilder();
+            m.accent(1f).sphere(0, 0, 0, 0.1f, 10);
+            m.accent(1f).cylinder(0, 0, 0, 0.092f, -Driver.THIGH, 0, 0.03f, 10);
+            legPattern(m, k, -Driver.THIGH, 0.094f);
+            drvThigh[k] = r.register(m.build());
+            m = new MeshBuilder();
+            m.accent(1f).sphere(0, 0, 0, 0.088f, 10);
+            m.accent(1f).cylinder(0, 0, 0, 0.082f, -Driver.SHIN, 0, 0.02f, 10);
+            legPattern(m, k, -Driver.SHIN, 0.084f);
+            drvShin[k] = r.register(m.build());
+        }
+
+        for (int i = 0; i < drvTorso.length; i++) {
+            m = new MeshBuilder();
+            buildTorso(m, i);
+            drvTorso[i] = r.register(m.build());
+        }
+        for (int i = 0; i < drvFace.length; i++) {
+            m = new MeshBuilder();
+            buildFace(m, i);
+            drvFace[i] = r.register(m.build());
+        }
+        for (int i = 0; i < drvHair.length; i++) {
+            m = new MeshBuilder();
+            buildHair(m, i, false);
+            drvHair[i] = m.isEmpty() ? null : r.register(m.build());
+            m = new MeshBuilder();
+            buildHair(m, i, true);
+            drvHairCapped[i] = m.isEmpty() ? null : r.register(m.build());
+        }
+        for (int i = 0; i < drvHat.length; i++) {
+            m = new MeshBuilder();
+            buildHat(m, i);
+            drvHat[i] = m.isEmpty() ? null : r.register(m.build());
+        }
+        for (int i = 0; i < drvShoe.length; i++) {
+            m = new MeshBuilder();
+            buildShoe(m, i);
+            drvShoe[i] = r.register(m.build());
+        }
+        for (int i = 0; i < drvHeld.length; i++) {
+            m = new MeshBuilder();
+            buildHeld(m, i);
+            drvHeld[i] = m.isEmpty() ? null : r.register(m.build());
+        }
+
+        // the stand-in for drivers far away: head, body and arms reaching for the wheel in one piece
+        m = new MeshBuilder();
+        m.paint(1f).ellipsoid(0, Driver.NECK_Y + HY, 0, 0.37f, 0.35f, 0.35f, 10);
+        m.accent(1f).box(0, 0.22f, 0, 0.56f, 0.6f, 0.36f, 0.16f, 1);
+        for (int s = -1; s <= 1; s += 2) {
+            m.accent(1f).box(s * 0.22f, 0.42f, 0.17f, 0.14f, 0.14f, 0.36f, 0.06f, 1);
+            m.paint(1f).sphere(s * 0.19f, 0.43f, 0.37f, 0.085f, 6);
+        }
+        drvBust = r.register(m.build());
+        // and what it wears on its head: one cap tinted like the hat or the hair (head space, like the hats)
+        m = new MeshBuilder();
+        m.paint(1f);
+        dome(m, HY + 0.02f, -0.01f, 0.4f, 0.39f, 0.39f, 0.1f, PI / 2, 0.3f, 10);
+        drvBustCap = r.register(m.build());
+
+        // steering wheel lying in its xz plane with the column going down
+        m = new MeshBuilder();
+        m.fixed(0x2A2433).torus(0, 0, 0, Driver.WHEEL_R, 0.032f, 18, 6);
+        for (int k = 0; k < 3; k++) {
+            m.push().rotateY(PI / 2 + k * PI * 2 / 3);
+            m.fixed(0x6A6478).box(Driver.WHEEL_R / 2, 0, 0, Driver.WHEEL_R, 0.025f, 0.04f, 0.012f, 1);
+            m.pop();
+        }
+        m.fixed(0xFF3B4F).cylinder(0, 0, 0, 0.055f, -0.02f, 0.03f, 0.015f, 12);
+        m.fixed(0x3A3550).cylinder(0, 0, 0, 0.03f, -0.5f, 0f, 0f, 8);
+        steeringWheel = r.register(m.build());
+    }
+
+    /** Side stripes (style 1) or checkers (style 2) on a pants leg running down from y = 0 to y1 (radius r). */
+    private static void legPattern(MeshBuilder m, int style, float y1, float r) {
+        if (style == 1) {
+            for (int s = -1; s <= 1; s += 2) m.fixed(0xFFFFFF).box(s * r, y1 / 2, 0, 0.02f, -y1 - 0.02f, 0.035f, 0.008f, 1);
+        } else if (style == 2) {
+            int rows = 3, cols = 8;
+            for (int j = 0; j < rows; j++) {
+                for (int i = 0; i < cols; i++) {
+                    if ((i + j) % 2 != 0) continue;
+                    m.push().rotateY(i * PI * 2 / cols).translate(0, y1 * (j + 0.5f) / rows, r);
+                    m.fixed(INK).box(0, 0, 0, r * 0.75f, -y1 / rows, 0.012f, 0.004f, 1);
+                    m.pop();
+                }
+            }
+        }
+    }
+
+    /**
+     * Band of an ellipsoid between latitudes a0 and a1 (PI / 2 = the top; a1 = PI / 2 closes it), tipped back by
+     * tilt so its front edge rises and its back edge drops: scalps, hair and hats.
+     */
+    private static void dome(MeshBuilder m, float cy, float cz, float rx, float ry, float rz, float a0, float a1, float tilt, int segs) {
+        int n = 8;
+        float[] p = new float[(n + 1) * 2];
+        for (int i = 0; i <= n; i++) {
+            double a = a0 + (a1 - a0) * i / n;
+            p[i * 2] = (float) Math.cos(a);
+            p[i * 2 + 1] = (float) Math.sin(a);
+        }
+        if (a1 >= PI / 2 - 1e-3f) p[n * 2] = 0f;
+        m.push().translate(0, cy, cz).rotateX(-tilt).scale(rx, ry, rz);
+        m.lathe(p, segs);
+        m.pop();
+    }
+
+    /** A cone of length len from (x, y, z) pointing along (yaw, pitch above the horizon). */
+    private static void spike(MeshBuilder m, float x, float y, float z, float yaw, float pitch, float r0, float len, int segs) {
+        m.push().translate(x, y, z).rotateY(yaw).rotateX(PI / 2 - pitch);
+        m.cone(0, 0, 0, r0, 0.004f, len, segs);
+        m.pop();
+    }
+
+    /** Point on a sphere of radius rr around (0, cy, cz) at (yaw, pitch): written into P. */
+    private static void onBall(float cy, float cz, float rr, float yaw, float pitch) {
+        float c = (float) Math.cos(pitch);
+        P[0] = c * (float) Math.sin(yaw) * rr;
+        P[1] = cy + (float) Math.sin(pitch) * rr;
+        P[2] = cz + c * (float) Math.cos(yaw) * rr;
+    }
+
+    private static final float[] P = new float[3];
+
+    /** z of the front of the face at (x, y) (head space). */
+    private static float faceZ(float x, float y) {
+        float dx = x / 0.37f, dy = (y - HY) / 0.35f;
+        return 0.35f * (float) Math.sqrt(Math.max(0f, 1f - dx * dx - dy * dy));
+    }
+
+    // ------------------------------------------------------------------ torsos (hips at the origin)
+
+    /** Torso outline: radius factor at height y (the body is an oval barrel 0.29 wide and 0.19 deep). */
+    private static float torsoR(float y) {
+        float[] t = TORSO_PROFILE;
+        if (y <= t[1]) return t[0];
+        for (int i = 2; i < t.length; i += 2) {
+            if (y <= t[i + 1]) {
+                float k = (y - t[i - 1]) / (t[i + 1] - t[i - 1]);
+                return t[i - 2] + (t[i] - t[i - 2]) * k;
+            }
+        }
+        return 0f;
+    }
+
+    private static final float[] TORSO_PROFILE = {0.8f, -0.17f, 0.93f, -0.12f, 1f, 0.02f, 1f, 0.3f, 0.93f, 0.42f, 0.72f, 0.5f, 0.38f, 0.545f, 0f, 0.56f};
+
+    /** The torso surface between heights y0 and y1, grown by g (bands of color over it), closed at the very ends. */
+    private static void torsoBand(MeshBuilder m, float y0, float y1, float g) {
+        int n = Math.max(2, (int) ((y1 - y0) / 0.04f));
+        float[] p = new float[(n + 1) * 2 + 4];
+        int k = 0;
+        if (y0 <= -0.17f) {
+            p[k++] = 0f;
+            p[k++] = -0.17f;
+        }
+        for (int i = 0; i <= n; i++) {
+            float y = y0 + (y1 - y0) * i / n;
+            p[k++] = torsoR(y);
+            p[k++] = y;
+        }
+        if (y1 >= 0.56f) {
+            p[k - 2] = 0f;
+        }
+        float[] q = new float[k];
+        System.arraycopy(p, 0, q, 0, k);
+        m.push().scale(0.29f + g, 1f, 0.19f + g);
+        m.lathe(q, 18);
+        m.pop();
+    }
+
+    /** A point on the torso surface at height y, angle a around it (0 = front, PI / 2 = its left): written into P. */
+    private static void onTorso(float y, float a, float g) {
+        float rr = torsoR(y);
+        P[0] = (float) Math.sin(a) * rr * (0.29f + g);
+        P[1] = y;
+        P[2] = (float) Math.cos(a) * rr * (0.19f + g);
+    }
+
+    /** Something flat stuck onto the torso at (y, a), facing out (built facing +z in the push). */
+    private static void onTorsoPush(MeshBuilder m, float y, float a, float g) {
+        onTorso(y, a, g);
+        m.push().translate(P[0], P[1], P[2]).rotateY(a);
+    }
+
+    private static void buildTorso(MeshBuilder m, int shirt) {
+        // pants on the hips (PRIMARY), the shirt above (SECONDARY)
+        m.paint(1f);
+        torsoBand(m, -0.17f, 0.0f, 0f);
+        m.accent(1f);
+        torsoBand(m, 0.0f, 0.56f, 0f);
+        switch (shirt) {
+            case Outfits.SH_TEE:
+                m.accent(0.82f);
+                torsoBand(m, 0.505f, 0.53f, 0.012f);
+                break;
+            case Outfits.SH_STRIPES:
+                m.fixed(0xFFFFFF);
+                for (int i = 0; i < 4; i++) torsoBand(m, 0.05f + i * 0.11f, 0.1f + i * 0.11f, 0.006f);
+                break;
+            case Outfits.SH_TANK:
+                m.accent(0.8f);
+                torsoBand(m, 0.46f, 0.49f, 0.01f);
+                break;
+            case Outfits.SH_HOODIE:
+                // hood lying on the back, a pouch pocket and drawstrings
+                m.accent(0.88f).ellipsoid(0, 0.5f, -0.15f, 0.21f, 0.11f, 0.11f, 12);
+                m.accent(0.82f).box(0, 0.12f, 0.175f, 0.3f, 0.13f, 0.04f, 0.03f, 1);
+                for (int s = -1; s <= 1; s += 2) m.fixed(0xFFFFFF).cylinder(s * 0.06f, 0.33f, 0.19f, 0.012f, 0f, 0.15f, 0.005f, 5);
+                break;
+            case Outfits.SH_SWEATER:
+                // a zigzag band, front and back
+                for (int side = 0; side < 2; side++) {
+                    for (int i = 0; i < 6; i++) {
+                        float a = (side == 0 ? 0f : PI) + (i - 2.5f) * 0.32f;
+                        onTorsoPush(m, 0.26f, a, 0.004f);
+                        m.rotateZ(i % 2 == 0 ? 0.75f : -0.75f);
+                        m.fixed(i % 2 == 0 ? 0xFFFFFF : 0xFFE14D).box(0, 0, 0, 0.11f, 0.035f, 0.02f, 0.008f, 1);
+                        m.pop();
+                    }
+                }
+                m.accent(0.8f);
+                torsoBand(m, 0.5f, 0.535f, 0.012f);
+                break;
+            case Outfits.SH_HAWAII:
+                for (int i = 0; i < 10; i++) {
+                    float a = i * 2.39f, y = 0.06f + (i * 0.137f) % 0.38f;
+                    onTorsoPush(m, y, a, 0f);
+                    int col = i % 3 == 0 ? 0xFFE14D : (i % 3 == 1 ? 0xFF6FB5 : 0xFFFFFF);
+                    for (int p = 0; p < 4; p++) m.fixed(col).ellipsoid((float) Math.cos(p * PI / 2) * 0.025f, (float) Math.sin(p * PI / 2) * 0.025f, 0, 0.024f, 0.024f, 0.012f, 6);
+                    m.fixed(0xFF9A2B).sphere(0, 0, 0.005f, 0.015f, 5);
+                    m.pop();
+                }
+                // open collar
+                for (int s = -1; s <= 1; s += 2) {
+                    m.push().translate(s * 0.07f, 0.49f, 0.11f).rotateZ(s * 0.5f).rotateX(-0.6f);
+                    m.fixed(0xFFFFFF).box(0, 0, 0, 0.1f, 0.03f, 0.08f, 0.012f, 1);
+                    m.pop();
+                }
+                break;
+            case Outfits.SH_OVERALLS:
+                // a white shirt above the bib, straps over the shoulders, yellow buttons
+                m.fixed(0xF4F4FF);
+                torsoBand(m, 0.3f, 0.56f, 0.004f);
+                m.accent(1f).box(0, 0.33f, 0.168f, 0.28f, 0.18f, 0.03f, 0.012f, 1);
+                for (int s = -1; s <= 1; s += 2) {
+                    m.push().translate(s * 0.12f, 0.46f, 0f);
+                    m.accent(1f).box(0, 0, 0, 0.055f, 0.03f, 0.41f, 0.012f, 1);
+                    m.pop();
+                    m.fixed(0xFFD23B).sphere(s * 0.1f, 0.4f, 0.19f, 0.022f, 6);
+                }
+                break;
+            case Outfits.SH_JERSEY:
+                // a big number 1 on the front and the back, trim at the neck
+                for (int side = -1; side <= 1; side += 2) {
+                    float z = side * 0.19f;
+                    m.fixed(INK).box(0.01f, 0.24f, z, 0.055f, 0.24f, 0.02f, 0.01f, 1);
+                    m.push().translate(-0.025f * side, 0.33f, z).rotateZ(-0.7f * side);
+                    m.fixed(INK).box(0, 0, 0, 0.05f, 0.09f, 0.02f, 0.01f, 1);
+                    m.pop();
+                }
+                m.fixed(0xFFFFFF);
+                torsoBand(m, 0.5f, 0.535f, 0.012f);
+                m.fixed(INK);
+                torsoBand(m, 0.0f, 0.03f, 0.008f);
+                break;
+            case Outfits.SH_RACING:
+                // red racing stripes down the sides, sponsor patches, a zipper
+                for (int s = -1; s <= 1; s += 2) {
+                    onTorsoPush(m, 0.2f, s * PI / 2, 0.003f);
+                    m.fixed(0xFF3B4F).box(0, 0, 0, 0.07f, 0.42f, 0.015f, 0.006f, 1);
+                    m.pop();
+                }
+                m.fixed(INK).box(0, 0.25f, 0.188f, 0.02f, 0.46f, 0.015f, 0.005f, 1);
+                m.fixed(0x3BB8FF).box(0.11f, 0.33f, 0.18f, 0.08f, 0.05f, 0.02f, 0.01f, 1);
+                m.fixed(0xFFD23B).box(-0.11f, 0.3f, 0.18f, 0.08f, 0.07f, 0.02f, 0.01f, 1);
+                m.fixed(0xFF3B4F).box(0, 0.25f, -0.188f, 0.24f, 0.08f, 0.02f, 0.01f, 1);
+                break;
+            case Outfits.SH_HERO: {
+                // a red cape down the back, a gold star on the chest, a gold belt
+                m.push().translate(0, 0.47f, -0.17f).rotateX(-0.22f);
+                m.fixed(0xFF2E4A).box(0, -0.32f, 0, 0.5f, 0.66f, 0.035f, 0.015f, 1);
+                m.pop();
+                m.fixed(0xFF2E4A);
+                torsoBand(m, 0.5f, 0.54f, 0.014f);
+                m.push().translate(0, 0.28f, 0.185f).rotateX(PI / 2);
+                m.fixed(0xFFD23B).extrude(starPoly(0.11f, 0.05f), -0.01f, 0.015f);
+                m.pop();
+                m.fixed(0xFFD23B);
+                torsoBand(m, -0.01f, 0.04f, 0.008f);
+                break;
+            }
+            case Outfits.SH_TUX:
+                // white shirt front, red bow tie, buttons, lapels
+                m.fixed(0xFFFFFF).box(0, 0.36f, 0.168f, 0.15f, 0.3f, 0.03f, 0.012f, 1);
+                for (int s = -1; s <= 1; s += 2) {
+                    m.push().translate(s * 0.075f, 0.37f, 0.18f).rotateZ(s * 0.35f);
+                    m.accent(0.6f).box(0, 0, 0, 0.05f, 0.24f, 0.02f, 0.01f, 1);
+                    m.pop();
+                    m.push().translate(s * 0.05f, 0.47f, 0.2f).rotateZ(s * 0.25f);
+                    m.fixed(0xFF2E4A).ellipsoid(0, 0, 0, 0.055f, 0.035f, 0.025f, 8);
+                    m.pop();
+                }
+                m.fixed(0xFF2E4A).sphere(0, 0.47f, 0.215f, 0.022f, 6);
+                for (int i = 0; i < 2; i++) m.fixed(0x3A3550).sphere(0, 0.29f - i * 0.08f, 0.188f, 0.014f, 5);
+                break;
+            case Outfits.SH_DISCO:
+                // sequins all over and a huge collar
+                for (int i = 0; i < 22; i++) {
+                    float a = i * 2.39996f, y = 0.04f + (i * 0.0613f) % 0.42f;
+                    onTorso(y, a, 0.004f);
+                    m.fixed(i % 3 == 0 ? 0xFFFFFF : (i % 3 == 1 ? 0xFF6FD8 : 0x7FF0FF)).sphere(P[0], P[1], P[2], 0.02f, 5);
+                }
+                for (int s = -1; s <= 1; s += 2) {
+                    m.push().translate(s * 0.09f, 0.5f, 0.12f).rotateZ(s * 0.9f).rotateX(-0.5f);
+                    m.fixed(0xFFFFFF).box(0, 0, 0, 0.16f, 0.025f, 0.12f, 0.012f, 1);
+                    m.pop();
+                }
+                break;
+            default: // space suit: grey collar ring, chest panel with buttons, life support pack on the back
+                m.fixed(0xA8B0C0);
+                torsoBand(m, 0.49f, 0.545f, 0.02f);
+                m.fixed(0xC8CED8).box(0, 0.3f, 0.175f, 0.2f, 0.13f, 0.04f, 0.015f, 1);
+                m.fixed(0xFF3B4F).sphere(-0.05f, 0.31f, 0.198f, 0.02f, 5);
+                m.fixed(0x5EE65A).sphere(0f, 0.31f, 0.198f, 0.02f, 5);
+                m.fixed(0x3BB8FF).sphere(0.05f, 0.31f, 0.198f, 0.02f, 5);
+                m.fixed(0xD8DEE8).box(0, 0.24f, -0.24f, 0.34f, 0.36f, 0.13f, 0.05f, 1);
+                m.fixed(0x9AA2B4).cylinder(-0.08f, 0.42f, -0.25f, 0.035f, 0f, 0.06f, 0.01f, 8);
+                m.fixed(0x9AA2B4).cylinder(0.08f, 0.42f, -0.25f, 0.035f, 0f, 0.06f, 0.01f, 8);
+                break;
+        }
+    }
+
+    // ------------------------------------------------------------------ faces (head space: neck at the origin)
+
+    /** Round eye at (x, y): white, a pupil looking (px, py), a glint. */
+    private static void eye(MeshBuilder m, float x, float y, float r, float px, float py) {
+        float z = faceZ(x, y);
+        m.fixed(0xFFFFFF).ellipsoid(x, y, z - 0.02f, r, r * 1.2f, r * 0.7f, 10);
+        m.fixed(INK).sphere(x + px, y + py, z + r * 0.42f, r * 0.55f, 8);
+        m.fixed(0xFFFFFF).sphere(x + px + r * 0.18f, y + py + r * 0.22f, z + r * 0.75f, r * 0.17f, 5);
+    }
+
+    /**
+     * A curve on the face: a smile (curve > 0: the ends rise) or frown, from -w to w, strung from 2n + 1 beads (close
+     * enough to read as one line).
+     */
+    private static void arc(MeshBuilder m, float y, float w, float curve, float thick, int color, int n) {
+        m.fixed(color);
+        n *= 2;
+        for (int i = 0; i <= n; i++) {
+            float t = -1f + 2f * i / n;
+            float x = t * w, yy = y + curve * t * t;
+            m.sphere(x, yy, faceZ(x, yy) + 0.005f, thick, 6);
+        }
+    }
+
+    /** A short bar on the face (brows, closed eyes), turned by angle. */
+    private static void bar(MeshBuilder m, float x, float y, float w, float h, float angle, int color) {
+        m.push().translate(x, y, faceZ(x, y) + 0.01f).rotateZ(angle);
+        m.fixed(color).box(0, 0, 0, w, h, 0.03f, Math.min(w, h) * 0.45f, 1);
+        m.pop();
+    }
+
+    private static void nose(MeshBuilder m) {
+        float y = HY - 0.03f;
+        m.paint(0.88f).ellipsoid(0, y, faceZ(0, y) - 0.005f, 0.05f, 0.045f, 0.05f, 8);
+    }
+
+    private static void blush(MeshBuilder m) {
+        for (int s = -1; s <= 1; s += 2) {
+            float x = s * 0.2f, y = HY - 0.07f;
+            m.fixed(0xFF9EB8).ellipsoid(x, y, faceZ(x, y) - 0.012f, 0.06f, 0.035f, 0.02f, 8);
+        }
+    }
+
+    private static void buildFace(MeshBuilder m, int face) {
+        float ey = HY + 0.07f, ex = 0.13f, er = 0.075f, my = HY - 0.13f;
+        switch (face) {
+            case Outfits.FC_SMILE:
+                eye(m, -ex, ey, er, 0, 0);
+                eye(m, ex, ey, er, 0, 0);
+                arc(m, my, 0.11f, 0.05f, 0.022f, INK, 8);
+                nose(m);
+                blush(m);
+                break;
+            case Outfits.FC_GRIN: {
+                // happy squints and a wide toothy grin
+                for (int s = -1; s <= 1; s += 2) {
+                    bar(m, s * ex - 0.035f, ey, 0.08f, 0.026f, 0.5f, INK);
+                    bar(m, s * ex + 0.035f, ey, 0.08f, 0.026f, -0.5f, INK);
+                }
+                float z = faceZ(0, my);
+                m.push().translate(0, my + 0.02f, z - 0.03f).rotateX(-0.25f);
+                m.fixed(0x5A1A2A).ellipsoid(0, 0, 0, 0.15f, 0.08f, 0.045f, 12);
+                m.fixed(0xFFFFFF).box(0, 0.035f, 0.025f, 0.2f, 0.035f, 0.03f, 0.012f, 1);
+                m.fixed(0xFF6F8F).ellipsoid(0, -0.04f, 0.022f, 0.07f, 0.03f, 0.025f, 8);
+                m.pop();
+                nose(m);
+                blush(m);
+                break;
+            }
+            case Outfits.FC_SHADES: {
+                // black shades with a shine, and a smirk
+                float z = faceZ(0, ey);
+                for (int s = -1; s <= 1; s += 2) {
+                    m.push().translate(s * 0.13f, ey, z + 0.01f).rotateY(s * 0.25f);
+                    m.fixed(0x14101E).box(0, 0, 0, 0.17f, 0.11f, 0.04f, 0.035f, 1);
+                    m.fixed(0x8A9AD0).box(-0.04f, 0.025f, 0.02f, 0.05f, 0.015f, 0.01f, 0.006f, 1);
+                    m.pop();
+                }
+                m.fixed(0x14101E).box(0, ey + 0.02f, z + 0.025f, 0.08f, 0.025f, 0.03f, 0.01f, 1);
+                for (int s = -1; s <= 1; s += 2) {
+                    m.push().translate(s * 0.27f, ey + 0.02f, faceZ(0.27f, ey) - 0.02f).rotateY(s * 1.1f);
+                    m.fixed(0x14101E).box(0, 0, 0, 0.12f, 0.025f, 0.02f, 0.008f, 1);
+                    m.pop();
+                }
+                arc(m, my, 0.08f, 0.03f, 0.02f, INK, 6);
+                bar(m, 0.1f, my + 0.035f, 0.05f, 0.022f, 0.6f, INK);
+                nose(m);
+                break;
+            }
+            case Outfits.FC_SILLY: {
+                // cross-eyed, tongue out
+                eye(m, -ex, ey, er * 1.1f, 0.025f, 0);
+                eye(m, ex, ey + 0.015f, er, -0.025f, 0.01f);
+                float z = faceZ(0, my);
+                m.fixed(0x5A1A2A).ellipsoid(0, my + 0.01f, z - 0.02f, 0.08f, 0.045f, 0.035f, 10);
+                m.push().translate(0.02f, my - 0.02f, z + 0.005f).rotateX(0.7f);
+                m.fixed(0xFF6F8F).ellipsoid(0, 0, 0.04f, 0.055f, 0.022f, 0.07f, 10);
+                m.fixed(0xE04F70).box(0, 0.012f, 0.05f, 0.008f, 0.01f, 0.06f, 0.003f, 1);
+                m.pop();
+                nose(m);
+                blush(m);
+                break;
+            }
+            case Outfits.FC_GRUMPY:
+                eye(m, -ex, ey - 0.01f, er, 0, -0.01f);
+                eye(m, ex, ey - 0.01f, er, 0, -0.01f);
+                bar(m, -ex, ey + 0.085f, 0.13f, 0.04f, -0.45f, INK);
+                bar(m, ex, ey + 0.085f, 0.13f, 0.04f, 0.45f, INK);
+                arc(m, my - 0.02f, 0.09f, -0.04f, 0.022f, INK, 7);
+                nose(m);
+                break;
+            case Outfits.FC_MUSTACHE: {
+                eye(m, -ex, ey, er, 0, 0);
+                eye(m, ex, ey, er, 0, 0);
+                bar(m, -ex, ey + 0.08f, 0.11f, 0.03f, 0.15f, 0x4A2A1A);
+                bar(m, ex, ey + 0.08f, 0.11f, 0.03f, -0.15f, 0x4A2A1A);
+                // a big curly handlebar mustache
+                float y = HY - 0.09f;
+                for (int s = -1; s <= 1; s += 2) {
+                    for (int i = 0; i < 4; i++) {
+                        float x = s * (0.03f + i * 0.045f), yy = y - 0.01f + (i == 3 ? 0.03f : 0f) - (i == 1 ? 0.012f : 0f);
+                        m.fixed(0x4A2A1A).ellipsoid(x, yy, faceZ(x, yy) + 0.01f, 0.045f - i * 0.004f, 0.035f, 0.035f, 8);
+                    }
+                }
+                nose(m);
+                break;
+            }
+            case Outfits.FC_SHOCKED: {
+                eye(m, -ex, ey + 0.01f, er * 1.25f, 0, 0);
+                eye(m, ex, ey + 0.01f, er * 1.25f, 0, 0);
+                bar(m, -ex, ey + 0.12f, 0.1f, 0.03f, 0.3f, INK);
+                bar(m, ex, ey + 0.12f, 0.1f, 0.03f, -0.3f, INK);
+                float z = faceZ(0, my - 0.01f);
+                m.fixed(0x5A1A2A).ellipsoid(0, my - 0.01f, z - 0.015f, 0.055f, 0.07f, 0.035f, 10);
+                nose(m);
+                break;
+            }
+            case Outfits.FC_WINK:
+                eye(m, ex, ey, er, 0, 0);
+                arc(m, ey - 0.01f, 0.055f, -0.025f, 0.018f, INK, 5);
+                arc(m, my, 0.11f, 0.06f, 0.022f, INK, 8);
+                m.fixed(0xFF6F8F).ellipsoid(0.05f, my + 0.005f, faceZ(0.05f, my) + 0.008f, 0.035f, 0.025f, 0.02f, 8);
+                nose(m);
+                blush(m);
+                break;
+            case Outfits.FC_NERD: {
+                eye(m, -ex, ey, er * 0.9f, 0, 0);
+                eye(m, ex, ey, er * 0.9f, 0, 0);
+                // round glasses
+                for (int s = -1; s <= 1; s += 2) {
+                    m.push().translate(s * ex, ey, faceZ(s * ex, ey) + 0.03f).rotateX(PI / 2).rotateZ(s * -0.25f);
+                    m.fixed(0x3A2A20).torus(0, 0, 0, 0.1f, 0.015f, 18, 5);
+                    m.pop();
+                }
+                m.fixed(0x3A2A20).box(0, ey + 0.01f, faceZ(0, ey) + 0.03f, 0.07f, 0.018f, 0.02f, 0.008f, 1);
+                arc(m, my + 0.01f, 0.08f, 0.03f, 0.02f, INK, 6);
+                float z = faceZ(0, my - 0.03f);
+                m.fixed(0xFFFFFF).box(-0.022f, my - 0.03f, z + 0.01f, 0.04f, 0.05f, 0.02f, 0.008f, 1);
+                m.fixed(0xFFFFFF).box(0.022f, my - 0.03f, z + 0.01f, 0.04f, 0.05f, 0.02f, 0.008f, 1);
+                nose(m);
+                break;
+            }
+            case Outfits.FC_PATCH: {
+                // one eye, a black patch on a strap round the head, a big grin
+                eye(m, ex, ey, er, 0, 0);
+                float z = faceZ(-ex, ey);
+                m.fixed(0x14101E).ellipsoid(-ex, ey, z, 0.09f, 0.09f, 0.03f, 10);
+                m.push().translate(0, ey + 0.01f, 0).rotateZ(-0.3f);
+                m.fixed(0x14101E).torus(0, 0, 0, 0.365f, 0.015f, 28, 4);
+                m.pop();
+                bar(m, ex, ey + 0.09f, 0.12f, 0.03f, 0.2f, INK);
+                arc(m, my, 0.12f, 0.05f, 0.023f, INK, 8);
+                nose(m);
+                break;
+            }
+            case Outfits.FC_CLOWN: {
+                eye(m, -ex, ey, er, 0, 0);
+                eye(m, ex, ey, er, 0, 0);
+                for (int s = -1; s <= 1; s += 2) {
+                    float x = s * ex, y = ey - 0.12f;
+                    m.fixed(0x3BB8FF).box(x, y, faceZ(x, y), 0.025f, 0.06f, 0.02f, 0.01f, 1);
+                }
+                arc(m, my - 0.01f, 0.15f, 0.08f, 0.03f, 0xFF3B4F, 10);
+                float y = HY - 0.03f;
+                m.fixed(0xFF2E3A).sphere(0, y, faceZ(0, y) + 0.04f, 0.085f, 12);
+                m.fixed(0xFFFFFF).sphere(-0.025f, y + 0.03f, faceZ(0, y) + 0.11f, 0.02f, 5);
+                blush(m);
+                break;
+            }
+            case Outfits.FC_STARS:
+                for (int s = -1; s <= 1; s += 2) {
+                    float x = s * ex, z = faceZ(x, ey);
+                    m.push().translate(x, ey, z).rotateY(s * 0.3f).rotateX(PI / 2);
+                    m.fixed(0xFFD23B).extrude(starPoly(0.1f, 0.045f), -0.02f, 0.025f);
+                    m.pop();
+                }
+                arc(m, my, 0.12f, 0.06f, 0.024f, INK, 8);
+                nose(m);
+                blush(m);
+                break;
+            default: { // laser eyes: glowing red eyes with a halo, a smug grin
+                for (int s = -1; s <= 1; s += 2) {
+                    float x = s * ex, z = faceZ(x, ey);
+                    m.fixed(0xFF6A6A).ellipsoid(x, ey, z - 0.02f, er * 1.25f, er * 1.1f, er * 0.6f, 10);
+                    m.fixed(0xFF1F2E).ellipsoid(x, ey, z + 0.005f, er * 0.95f, er * 0.85f, er * 0.6f, 10);
+                    m.fixed(0xFFF0F0).sphere(x, ey, z + 0.04f, er * 0.4f, 6);
+                }
+                bar(m, -ex, ey + 0.09f, 0.13f, 0.035f, -0.3f, INK);
+                bar(m, ex, ey + 0.09f, 0.13f, 0.035f, 0.3f, INK);
+                arc(m, my, 0.1f, 0.025f, 0.022f, INK, 7);
+                bar(m, 0.1f, my + 0.03f, 0.05f, 0.022f, 0.6f, INK);
+                nose(m);
+                break;
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ hair (capped: only what shows under a hat)
+
+    private static void buildHair(MeshBuilder m, int hair, boolean capped) {
+        float cy = HY + 0.015f;
+        // most styles start from a scalp tipped back off the forehead; under a hat only its lower band shows
+        float top = PI / 2;
+        switch (hair) {
+            case Outfits.HR_BALD:
+                break;
+            case Outfits.HR_BUZZ:
+                m.paint(1f);
+                dome(m, cy, -0.01f, 0.383f, 0.37f, 0.37f, -0.05f, capped ? 0.3f : top, 0.5f, 18);
+                break;
+            case Outfits.HR_MOP:
+                m.paint(1f);
+                dome(m, cy + 0.01f, -0.02f, 0.41f, 0.4f, 0.41f, -0.4f, capped ? 0.1f : top, 0.32f, 18);
+                // bangs over the forehead
+                m.paint(0.95f);
+                for (int i = 0; i < 5; i++) {
+                    float x = -0.2f + i * 0.1f, y = HY + 0.19f - Math.abs(i - 2) * 0.02f;
+                    m.ellipsoid(x, y, faceZ(x, y) + 0.02f, 0.085f, 0.07f, 0.06f, 8);
+                }
+                break;
+            case Outfits.HR_SPIKY:
+                m.paint(1f);
+                dome(m, cy, -0.01f, 0.383f, 0.37f, 0.37f, -0.05f, capped ? 0.3f : top, 0.5f, 18);
+                for (int i = 0; i < 11; i++) {
+                    float yaw = -2.6f + i * 0.52f, pitch = 0.55f + (i % 3) * 0.3f;
+                    if (Math.abs(yaw) < 0.6f) pitch = 1.0f + (i % 2) * 0.2f;
+                    if (capped && pitch > 0.6f) continue;
+                    onBall(cy, -0.02f, 0.33f, yaw, pitch);
+                    spike(m, P[0], P[1], P[2], yaw, pitch + 0.2f, 0.095f, 0.25f, 8);
+                }
+                if (capped) {
+                    for (int s = -1; s <= 1; s += 2) {
+                        onBall(cy, -0.02f, 0.33f, PI + s * 0.5f, 0.2f);
+                        spike(m, P[0], P[1], P[2], PI + s * 0.5f, 0.1f, 0.08f, 0.2f, 8);
+                    }
+                }
+                break;
+            case Outfits.HR_PONY:
+                m.paint(1f);
+                dome(m, cy, -0.01f, 0.385f, 0.375f, 0.375f, -0.05f, capped ? 0.3f : top, 0.45f, 18);
+                m.push().translate(0, HY + 0.12f, -0.36f).rotateX(-1.2f);
+                m.fixed(0xFF6FB5).torus(0, 0, 0, 0.055f, 0.022f, 12, 5);
+                m.pop();
+                m.paint(1f);
+                for (int i = 0; i < 4; i++) {
+                    m.ellipsoid(0, HY + 0.08f - i * 0.09f, -0.43f - i * 0.03f, 0.085f - i * 0.008f, 0.12f, 0.085f - i * 0.008f, 10);
+                }
+                break;
+            case Outfits.HR_CURLS: {
+                m.paint(0.9f);
+                dome(m, cy, -0.01f, 0.38f, 0.37f, 0.37f, -0.2f, capped ? 0.2f : top, 0.45f, 16);
+                m.paint(1f);
+                for (int j = 0; j < 5; j++) {
+                    float pitch = -0.25f + j * 0.36f;
+                    int n = j == 4 ? 3 : 9 - j;
+                    for (int i = 0; i < n; i++) {
+                        float yaw = PI + (i - (n - 1) / 2f) * (j == 4 ? 1.2f : 0.62f);
+                        onBall(cy, -0.01f, 0.37f, yaw, pitch);
+                        if (P[2] > 0.12f && P[1] < HY + 0.24f) continue; // keep the face clear
+                        if (capped && P[1] > HY + 0.12f) continue;
+                        m.sphere(P[0], P[1], P[2], 0.1f, 7);
+                    }
+                }
+                break;
+            }
+            case Outfits.HR_AFRO:
+            case Outfits.HR_RAINBOW: {
+                boolean rainbow = hair == Outfits.HR_RAINBOW;
+                if (rainbow) m.fixed(RAINBOW_RINGS[0]);
+                else m.paint(1f);
+                dome(m, HY + 0.11f, -0.07f, 0.56f, 0.52f, 0.55f, -0.3f, capped ? 0.25f : top, 0.75f, 20);
+                // bumpy puffs on top
+                for (int j = 0; j < 4; j++) {
+                    float pitch = -0.05f + j * 0.42f;
+                    int n = j == 3 ? 1 : 7 - j;
+                    for (int i = 0; i < n; i++) {
+                        float yaw = PI + (i - (n - 1) / 2f) * 0.85f;
+                        onBall(HY + 0.11f, -0.07f, 0.5f, yaw, pitch);
+                        if (P[2] > 0.25f && P[1] < HY + 0.35f) continue;
+                        if (capped && P[1] > HY + 0.2f) continue;
+                        if (rainbow) m.fixed(RAINBOW_RINGS[(j + i) % 6]);
+                        else m.paint(0.94f);
+                        m.sphere(P[0], P[1], P[2], 0.15f, 8);
+                    }
+                }
+                break;
+            }
+            case Outfits.HR_PIGTAILS:
+                m.paint(1f);
+                dome(m, cy, -0.01f, 0.385f, 0.375f, 0.375f, -0.1f, capped ? 0.3f : top, 0.4f, 18);
+                for (int s = -1; s <= 1; s += 2) {
+                    for (int i = 0; i < 3; i++) {
+                        m.paint(1f).ellipsoid(s * (0.42f + i * 0.05f), HY + 0.12f - i * 0.1f, -0.12f, 0.08f - i * 0.006f, 0.1f, 0.08f, 9);
+                    }
+                    m.fixed(0xFF4FA3).ellipsoid(s * 0.39f, HY + 0.17f, -0.12f, 0.035f, 0.07f, 0.07f, 8);
+                }
+                break;
+            case Outfits.HR_MOHAWK:
+                m.paint(0.55f);
+                dome(m, cy, -0.01f, 0.375f, 0.362f, 0.362f, -0.05f, capped ? 0.3f : top, 0.5f, 16);
+                m.paint(1f);
+                for (int i = 0; i < 7; i++) {
+                    float a = 0.65f + i * 0.33f; // over the top from the forehead to the back
+                    if (capped && i < 6) continue;
+                    float y = cy + (float) Math.sin(a) * 0.33f, z = -0.01f + (float) Math.cos(a) * 0.33f;
+                    m.push().translate(0, y, z).rotateX(PI / 2 - a).scale(0.32f, 1f, 1f);
+                    m.cone(0, 0, 0, 0.16f, 0.01f, 0.28f - Math.abs(i - 3) * 0.03f, 10);
+                    m.pop();
+                }
+                break;
+            case Outfits.HR_LONG:
+                m.paint(1f);
+                dome(m, cy + 0.005f, -0.015f, 0.395f, 0.38f, 0.385f, -0.3f, capped ? 0.2f : top, 0.45f, 18);
+                m.paint(0.95f).box(0, HY - 0.12f, -0.24f, 0.62f, 0.5f, 0.22f, 0.1f, 1);
+                for (int s = -1; s <= 1; s += 2) m.paint(0.95f).ellipsoid(s * 0.32f, HY - 0.12f, 0.04f, 0.08f, 0.24f, 0.1f, 9);
+                break;
+            case Outfits.HR_POMP:
+                m.paint(1f);
+                dome(m, cy, -0.01f, 0.385f, 0.375f, 0.375f, -0.1f, capped ? 0.3f : top, 0.45f, 18);
+                if (!capped) {
+                    m.push().translate(0, HY + 0.33f, 0.16f).rotateX(-0.35f);
+                    m.paint(1f).ellipsoid(0, 0, 0, 0.27f, 0.14f, 0.24f, 14);
+                    m.fixed(0x8A8AA8).ellipsoid(-0.08f, 0.1f, 0.06f, 0.08f, 0.03f, 0.1f, 6);
+                    m.pop();
+                }
+                for (int s = -1; s <= 1; s += 2) m.paint(0.9f).ellipsoid(s * 0.34f, HY + 0.02f, 0.06f, 0.045f, 0.12f, 0.06f, 8);
+                break;
+            default: // flame hair: an orange scalp with flames licking up and back
+                m.paint(1f);
+                dome(m, cy, -0.01f, 0.383f, 0.37f, 0.37f, -0.05f, capped ? 0.3f : top, 0.5f, 18);
+                for (int i = 0; i < 9; i++) {
+                    float yaw = -2.4f + i * 0.6f, pitch = 0.75f + (i % 2) * 0.35f;
+                    if (capped) {
+                        if (Math.abs(yaw) < 1.6f) continue;
+                        pitch = 0.15f;
+                    }
+                    onBall(cy, -0.02f, 0.3f, yaw, pitch);
+                    float lean = pitch + 0.35f;
+                    m.fixed(0xFF3B1F);
+                    spike(m, P[0], P[1], P[2], yaw + PI * 0.15f * (i % 2 == 0 ? 1 : -1), lean, 0.11f, 0.32f, 8);
+                    m.fixed(0xFFD23B);
+                    spike(m, P[0], P[1] + 0.01f, P[2], yaw, lean, 0.06f, 0.22f, 7);
+                }
+                break;
+        }
+    }
+
+    // ------------------------------------------------------------------ hats (head space)
+
+    private static void buildHat(MeshBuilder m, int hat) {
+        switch (hat) {
+            case Outfits.H_NONE:
+                break;
+            case Outfits.H_CAP:
+                m.paint(1f);
+                dome(m, HY + 0.02f, -0.01f, 0.39f, 0.38f, 0.385f, 0.32f, PI / 2, 0.22f, 18);
+                m.push().translate(0, HY + 0.2f, 0.3f).rotateX(0.18f);
+                m.paint(0.88f).ellipsoid(0, 0, 0.06f, 0.25f, 0.03f, 0.21f, 14);
+                m.pop();
+                m.fixed(0xFFFFFF).sphere(0, HY + 0.39f, -0.04f, 0.035f, 6);
+                m.fixed(0xFFFFFF).box(0, HY + 0.24f, 0.33f, 0.12f, 0.08f, 0.03f, 0.02f, 1);
+                break;
+            case Outfits.H_BEANIE:
+                m.paint(1f);
+                dome(m, HY + 0.03f, -0.01f, 0.39f, 0.4f, 0.39f, 0.25f, PI / 2, 0.15f, 18);
+                m.paint(0.8f);
+                dome(m, HY + 0.03f, -0.01f, 0.41f, 0.42f, 0.41f, 0.2f, 0.52f, 0.15f, 18);
+                m.fixed(0xFFFFFF).sphere(0, HY + 0.44f, -0.06f, 0.09f, 10);
+                break;
+            case Outfits.H_BUCKET:
+                m.push().translate(0, 0, -0.02f).rotateX(-0.12f);
+                m.paint(1f).cone(0, HY + 0.17f, 0, 0.37f, 0.31f, 0.2f, 18);
+                m.paint(1f).cylinder(0, HY + 0.36f, 0, 0.31f, 0f, 0.02f, 0.01f, 18);
+                m.paint(0.9f).cone(0, HY + 0.1f, 0, 0.56f, 0.37f, 0.09f, 20);
+                m.fixed(0x6A4A2A).cone(0, HY + 0.18f, 0, 0.375f, 0.36f, 0.05f, 18);
+                m.pop();
+                break;
+            case Outfits.H_HARD:
+                m.paint(1f);
+                dome(m, HY + 0.04f, -0.01f, 0.4f, 0.4f, 0.41f, 0.3f, PI / 2, 0.12f, 18);
+                m.push().translate(0, HY + 0.16f, 0f).rotateX(0.1f);
+                m.paint(0.92f).cone(0, 0, 0, 0.47f, 0.41f, 0.04f, 20);
+                m.pop();
+                m.paint(0.95f).box(0, HY + 0.43f, -0.02f, 0.07f, 0.06f, 0.48f, 0.03f, 1);
+                m.fixed(0xFFFFFF).box(0, HY + 0.3f, 0.36f, 0.14f, 0.08f, 0.03f, 0.015f, 1);
+                break;
+            case Outfits.H_COWBOY:
+                m.push().translate(0, HY + 0.12f, -0.02f).rotateX(-0.12f);
+                m.paint(1f).lathe(new float[]{0.31f, 0f, 0.29f, 0.2f, 0.26f, 0.3f, 0.12f, 0.28f, 0f, 0.25f}, 18);
+                m.fixed(0x3A2418).cylinder(0, 0.0f, 0, 0.315f, 0f, 0.07f, 0.01f, 18);
+                m.paint(0.92f).ellipsoid(0, 0.0f, 0, 0.6f, 0.035f, 0.55f, 20);
+                for (int s = -1; s <= 1; s += 2) {
+                    m.push().translate(s * 0.52f, 0.05f, 0).rotateZ(s * 0.7f);
+                    m.paint(0.92f).ellipsoid(0, 0, 0, 0.12f, 0.035f, 0.42f, 12);
+                    m.pop();
+                }
+                m.pop();
+                break;
+            case Outfits.H_PROPELLER: {
+                int[] cols = {0xFF4FA3, 0xFFD23B, 0x3BB8FF, 0x5EE65A};
+                m.paint(1f);
+                dome(m, HY + 0.03f, -0.01f, 0.39f, 0.39f, 0.39f, 0.3f, PI / 2, 0f, 16);
+                for (int k = 0; k < 4; k++) {
+                    m.push().rotateY(k * PI / 4);
+                    m.fixed(cols[k]);
+                    dome(m, HY + 0.03f, -0.01f, 0.05f, 0.395f, 0.395f, 0.3f, PI / 2, 0f, 8);
+                    m.pop();
+                }
+                m.paint(0.85f).ellipsoid(0, HY + 0.15f, 0.36f, 0.2f, 0.025f, 0.12f, 10);
+                m.fixed(0xC8CCD8).cylinder(0, HY + 0.4f, -0.01f, 0.02f, 0f, 0.1f, 0.005f, 6);
+                m.push().translate(0, HY + 0.51f, -0.01f).rotateY(0.4f);
+                m.fixed(0xFF3B4F).box(0.14f, 0, 0, 0.26f, 0.02f, 0.07f, 0.01f, 1);
+                m.fixed(0x3BB8FF).box(-0.14f, 0, 0, 0.26f, 0.02f, 0.07f, 0.01f, 1);
+                m.fixed(0xFFD23B).sphere(0, 0.01f, 0, 0.03f, 6);
+                m.pop();
+                break;
+            }
+            case Outfits.H_HELMET:
+                // full racing helmet, open at the face, with a red stripe and a visor peak
+                m.paint(1f);
+                dome(m, HY + 0.01f, -0.02f, 0.43f, 0.43f, 0.43f, -0.62f, PI / 2, 0.88f, 20);
+                m.fixed(0xFF3B4F);
+                dome(m, HY + 0.01f, -0.02f, 0.08f, 0.435f, 0.435f, -0.62f, PI / 2, 0.88f, 8);
+                m.push().translate(0, HY + 0.2f, 0.3f).rotateX(0.35f);
+                m.fixed(0x2A2433).box(0, 0, 0.04f, 0.42f, 0.03f, 0.14f, 0.015f, 1);
+                m.pop();
+                break;
+            case Outfits.H_CONE:
+                m.fixed(0xFF7A1A).cylinder(0, HY + 0.17f, -0.01f, 0.35f, 0f, 0.05f, 0.02f, 16);
+                m.fixed(0xFF7A1A).cone(0, HY + 0.2f, -0.01f, 0.3f, 0.2f, 0.25f, 16);
+                m.fixed(0xFFFFFF).cone(0, HY + 0.45f, -0.01f, 0.2f, 0.14f, 0.15f, 16);
+                m.fixed(0xFF7A1A).cone(0, HY + 0.6f, -0.01f, 0.14f, 0.03f, 0.25f, 16);
+                break;
+            case Outfits.H_VIKING:
+                m.fixed(0x9AA0B4);
+                dome(m, HY + 0.03f, -0.01f, 0.395f, 0.39f, 0.395f, 0.2f, PI / 2, 0.1f, 18);
+                m.fixed(0xD8A030);
+                dome(m, HY + 0.03f, -0.01f, 0.41f, 0.405f, 0.41f, 0.18f, 0.4f, 0.1f, 18);
+                m.fixed(0xD8A030).box(0, HY + 0.3f, 0.02f, 0.06f, 0.09f, 0.78f, 0.03f, 1);
+                for (int s = -1; s <= 1; s += 2) {
+                    m.push().translate(s * 0.34f, HY + 0.2f, -0.02f).rotateZ(-s * 0.9f);
+                    m.fixed(0xFFF2D8).cone(0, 0, 0, 0.1f, 0.06f, 0.22f, 10);
+                    m.push().translate(0, 0.2f, 0).rotateZ(s * 0.7f);
+                    m.fixed(0xFFF2D8).cone(0, 0, 0, 0.065f, 0.01f, 0.22f, 10);
+                    m.pop();
+                    m.pop();
+                }
+                break;
+            case Outfits.H_SHARK: {
+                // a plush shark swallowing the head: the face peeks out of its mouth
+                m.paint(1f);
+                dome(m, HY + 0.02f, -0.06f, 0.45f, 0.45f, 0.47f, -0.6f, PI / 2, 0.85f, 20);
+                m.fixed(0xF4F4FF);
+                dome(m, HY + 0.02f, -0.06f, 0.455f, 0.455f, 0.475f, -0.6f, -0.35f, 0.85f, 20);
+                for (int i = 0; i < 9; i++) {
+                    float t = -1f + i * 0.25f, x = t * 0.3f, y = HY + 0.26f - 0.07f * t * t;
+                    m.push().translate(x, y, faceZ(x, y) + 0.04f).rotateX(PI + 0.4f);
+                    m.fixed(0xFFFFFF).cone(0, 0, 0, 0.035f, 0.003f, 0.07f, 6);
+                    m.pop();
+                }
+                for (int s = -1; s <= 1; s += 2) {
+                    m.fixed(0xFFFFFF).sphere(s * 0.3f, HY + 0.3f, 0.2f, 0.06f, 8);
+                    m.fixed(INK).sphere(s * 0.32f, HY + 0.31f, 0.24f, 0.035f, 6);
+                }
+                m.push().translate(0, HY + 0.4f, -0.08f).rotateX(-0.45f).scale(0.28f, 1f, 1f);
+                m.paint(1f).cone(0, 0, 0, 0.24f, 0.01f, 0.36f, 12);
+                m.pop();
+                m.push().translate(0, HY - 0.05f, -0.5f).rotateX(-1.3f).scale(0.3f, 1f, 1f);
+                m.paint(1f).cone(0, 0, 0, 0.18f, 0.01f, 0.3f, 10);
+                m.pop();
+                break;
+            }
+            case Outfits.H_TOPHAT:
+                m.push().translate(0.07f, HY + 0.31f, -0.02f).rotateZ(-0.28f).rotateX(-0.1f);
+                m.paint(1f).cylinder(0, 0, 0, 0.22f, 0f, 0.03f, 0.012f, 16);
+                m.paint(1f).cylinder(0, 0.02f, 0, 0.14f, 0f, 0.28f, 0.02f, 16);
+                m.fixed(0xFF2E4A).cylinder(0, 0.04f, 0, 0.145f, 0f, 0.06f, 0.01f, 16);
+                m.pop();
+                break;
+            case Outfits.H_CROWN: {
+                m.fixed(0xC8203C);
+                dome(m, HY + 0.05f, -0.01f, 0.32f, 0.36f, 0.32f, 0.45f, PI / 2, 0.05f, 16);
+                m.push().translate(0, HY + 0.18f, -0.01f).rotateX(-0.05f);
+                m.fixed(0xFFC83D).lathe(new float[]{0.36f, 0f, 0.36f, 0f, 0.38f, 0.16f, 0.38f, 0.16f, 0.33f, 0.16f, 0.33f, 0.16f, 0.31f, 0.02f, 0.31f, 0.02f, 0f, 0.02f}, 20);
+                for (int k = 0; k < 6; k++) {
+                    double a = k * Math.PI / 3 + Math.PI / 6;
+                    float x = (float) Math.cos(a) * 0.355f, z = (float) Math.sin(a) * 0.355f;
+                    m.fixed(0xFFC83D).cone(x, 0.14f, z, 0.075f, 0.01f, 0.19f, 8);
+                    m.fixed(0xFFF0A0).sphere(x, 0.34f, z, 0.035f, 6);
+                    int jewel = k % 3 == 0 ? 0xFF2E4A : (k % 3 == 1 ? 0x3BB8FF : 0x34D058);
+                    m.fixed(jewel).sphere((float) Math.cos(a) * 0.385f, 0.08f, (float) Math.sin(a) * 0.385f, 0.04f, 6);
+                }
+                m.pop();
+                break;
+            }
+            default: // space helmet: a white dome all round the head, a gold visor, an antenna
+                m.paint(1f).ellipsoid(0, HY + 0.03f, 0, 0.47f, 0.47f, 0.47f, 20);
+                m.push().translate(0, HY + 0.05f, 0.12f);
+                m.fixed(0xFFC83D).ellipsoid(0, 0, 0, 0.36f, 0.27f, 0.38f, 16);
+                m.fixed(0xFFF6D0).ellipsoid(-0.13f, 0.1f, 0.33f, 0.07f, 0.04f, 0.03f, 6);
+                m.pop();
+                m.fixed(0xA8B0C0).torus(0, -0.01f, 0, 0.3f, 0.06f, 18, 6);
+                for (int s = -1; s <= 1; s += 2) {
+                    m.push().translate(s * 0.46f, HY + 0.03f, 0).rotateZ(PI / 2);
+                    m.fixed(0x9AA2B4).cylinder(0, 0, 0, 0.08f, -0.04f, 0.04f, 0.015f, 10);
+                    m.pop();
+                }
+                m.fixed(0x9AA2B4).cylinder(0.18f, HY + 0.4f, -0.12f, 0.015f, 0f, 0.25f, 0.005f, 6);
+                m.fixed(0xFF3B4F).sphere(0.18f, HY + 0.66f, -0.12f, 0.04f, 6);
+                break;
+        }
+    }
+
+    // ------------------------------------------------------------------ shoes (ankle at the origin, toes to +z)
+
+    /** A basic shoe: body (current color) from the heel to the toe, sole in the given color. */
+    private static void shoe(MeshBuilder m, float len, float w, float h, int sole) {
+        float zc = len / 2 - 0.07f;
+        m.box(0, -Driver.SOLE + 0.02f + h / 2, zc, w, h, len, Math.min(w, h) * 0.45f, 2);
+        m.fixed(sole).box(0, -Driver.SOLE + 0.012f, zc, w + 0.012f, 0.024f, len + 0.012f, 0.012f, 1);
+    }
+
+    private static void buildShoe(MeshBuilder m, int s) {
+        switch (s) {
+            case Outfits.S_BOOTS:
+                m.paint(1f).cylinder(0, -0.03f, -0.005f, 0.095f, 0f, 0.14f, 0.025f, 10);
+                m.paint(1f);
+                shoe(m, 0.25f, 0.15f, 0.09f, 0x3A2418);
+                m.paint(0.75f).cylinder(0, 0.1f, -0.005f, 0.1f, 0f, 0.025f, 0.01f, 10);
+                break;
+            case Outfits.S_FLIPFLOPS:
+                m.paint(1f).box(0, -Driver.SOLE + 0.01f, 0.05f, 0.14f, 0.02f, 0.27f, 0.01f, 1);
+                m.accent(1f).box(0, -0.03f, 0.04f, 0.11f, 0.06f, 0.22f, 0.03f, 1);
+                for (int i = 0; i < 4; i++) m.accent(1f).sphere(-0.04f + i * 0.026f, -0.035f, 0.16f, 0.02f, 5);
+                m.fixed(0xFFFFFF).box(0, -0.02f, 0.09f, 0.115f, 0.015f, 0.025f, 0.007f, 1);
+                break;
+            case Outfits.S_HIGHTOPS:
+                m.paint(1f).cylinder(0, -0.03f, -0.01f, 0.095f, 0f, 0.12f, 0.03f, 10);
+                m.paint(1f);
+                shoe(m, 0.25f, 0.15f, 0.09f, 0xFFFFFF);
+                m.fixed(0xFFFFFF).ellipsoid(0, -0.03f, 0.15f, 0.07f, 0.04f, 0.05f, 8);
+                for (int k = -1; k <= 1; k += 2) {
+                    m.push().translate(k * 0.078f, 0.0f, 0.0f).rotateZ(k * PI / 2);
+                    m.fixed(0xFFFFFF).extrude(starPoly(0.04f, 0.018f), -0.004f, 0.004f);
+                    m.pop();
+                }
+                break;
+            case Outfits.S_RAIN:
+                m.paint(1f).cylinder(0, -0.03f, -0.005f, 0.1f, 0f, 0.19f, 0.03f, 10);
+                m.paint(1f);
+                shoe(m, 0.25f, 0.15f, 0.09f, 0x3A3550);
+                m.paint(0.8f).cylinder(0, 0.15f, -0.005f, 0.105f, 0f, 0.03f, 0.01f, 10);
+                break;
+            case Outfits.S_DRESS:
+                m.paint(1f).ellipsoid(0, -0.03f, 0.06f, 0.075f, 0.045f, 0.16f, 12);
+                m.paint(1f).box(0, -0.055f, -0.04f, 0.1f, 0.04f, 0.08f, 0.015f, 1);
+                m.fixed(0x6A6A80).ellipsoid(-0.03f, 0.0f, 0.1f, 0.025f, 0.01f, 0.05f, 6);
+                break;
+            case Outfits.S_CLOWN:
+                m.paint(1f).ellipsoid(0, -0.025f, 0.14f, 0.13f, 0.07f, 0.28f, 14);
+                m.fixed(0xFFFFFF).box(0, -0.065f, 0.12f, 0.2f, 0.02f, 0.5f, 0.01f, 1);
+                m.fixed(0xFFD23B).ellipsoid(-0.035f, 0.035f, 0.04f, 0.05f, 0.02f, 0.03f, 6);
+                m.fixed(0xFFD23B).ellipsoid(0.035f, 0.035f, 0.04f, 0.05f, 0.02f, 0.03f, 6);
+                break;
+            case Outfits.S_BUNNY:
+                m.paint(1f).ellipsoid(0, -0.025f, 0.06f, 0.1f, 0.065f, 0.18f, 12);
+                for (int k = -1; k <= 1; k += 2) {
+                    m.push().translate(k * 0.04f, 0.02f, 0.13f).rotateZ(-k * 0.25f).rotateX(-0.35f);
+                    m.paint(1f).ellipsoid(0, 0.07f, 0, 0.03f, 0.08f, 0.02f, 8);
+                    m.fixed(0xFFA6CE).ellipsoid(0, 0.07f, 0.012f, 0.018f, 0.06f, 0.012f, 6);
+                    m.pop();
+                    m.fixed(INK).sphere(k * 0.03f, 0.005f, 0.18f, 0.014f, 5);
+                }
+                m.fixed(0xFF6F9F).sphere(0, -0.02f, 0.235f, 0.018f, 5);
+                break;
+            case Outfits.S_SKATES:
+                m.paint(1f).cylinder(0, -0.03f, -0.005f, 0.095f, 0f, 0.12f, 0.03f, 10);
+                m.paint(1f).box(0, -0.035f, 0.05f, 0.14f, 0.09f, 0.25f, 0.04f, 2);
+                m.fixed(0xB8BECC).box(0, -0.085f, 0.05f, 0.1f, 0.02f, 0.25f, 0.008f, 1);
+                for (int i = 0; i < 2; i++) {
+                    for (int k = -1; k <= 1; k += 2) {
+                        m.push().translate(k * 0.055f, -0.115f, -0.04f + i * 0.18f).rotateZ(PI / 2);
+                        m.fixed(0xFFD23B).cylinder(0, 0, 0, 0.035f, -0.022f, 0.022f, 0.008f, 10);
+                        m.pop();
+                    }
+                }
+                m.fixed(0xFF3B4F).sphere(0, -0.07f, 0.19f, 0.03f, 6);
+                break;
+            case Outfits.S_ROCKET:
+                m.paint(1f).cylinder(0, -0.03f, -0.005f, 0.098f, 0f, 0.13f, 0.03f, 10);
+                m.paint(1f);
+                shoe(m, 0.25f, 0.15f, 0.09f, 0x3A3550);
+                m.push().translate(0, -0.01f, -0.1f).rotateX(-PI / 2 - 0.5f);
+                m.fixed(0x3A3550).cone(0, 0, 0, 0.04f, 0.055f, 0.06f, 10);
+                m.fixed(0xFF8A1F).cone(0, 0.06f, 0, 0.045f, 0.005f, 0.12f, 8);
+                m.fixed(0xFFE14D).cone(0, 0.06f, 0, 0.025f, 0.003f, 0.08f, 6);
+                m.pop();
+                m.fixed(0xFF3B4F).box(0, 0.05f, 0.09f, 0.16f, 0.03f, 0.03f, 0.01f, 1);
+                break;
+            default: // sneakers and golden kicks (with little white wings)
+                m.paint(1f);
+                shoe(m, 0.25f, 0.15f, 0.09f, s == Outfits.S_GOLD ? 0xFFFFFF : 0xFF3B4F);
+                m.fixed(s == Outfits.S_GOLD ? 0xFFF4C0 : 0xC8CCD8).box(0, 0.0f, 0.06f, 0.07f, 0.02f, 0.1f, 0.008f, 1);
+                if (s == Outfits.S_GOLD) {
+                    for (int k = -1; k <= 1; k += 2) {
+                        m.push().translate(k * 0.08f, 0.0f, -0.05f).rotateZ(-k * 0.6f).rotateX(0.5f);
+                        m.fixed(0xFFFFFF).ellipsoid(0, 0.05f, 0, 0.012f, 0.06f, 0.035f, 6);
+                        m.pop();
+                    }
+                    m.fixed(0x9AF0FF).sphere(0, 0.0f, 0.17f, 0.022f, 6);
+                }
+                break;
+        }
+    }
+
+    // ------------------------------------------------------------------ things to hold (fist at the origin)
+
+    private static void buildHeld(MeshBuilder m, int i) {
+        switch (i) {
+            case Outfits.HD_NONE:
+                break;
+            case Outfits.HD_FINGER:
+                m.fixed(0x3BB8FF).box(0, 0.13f, 0, 0.2f, 0.2f, 0.09f, 0.045f, 2);
+                m.fixed(0x3BB8FF).cylinder(0.035f, 0.2f, 0, 0.042f, 0f, 0.28f, 0.04f, 10);
+                m.fixed(0x3BB8FF).ellipsoid(-0.11f, 0.15f, 0.01f, 0.035f, 0.07f, 0.035f, 8);
+                for (int k = 0; k < 3; k++) m.fixed(0x2A9FD8).sphere(-0.05f + k * 0.05f, 0.23f, 0.03f, 0.03f, 6);
+                m.fixed(0xFFE14D).box(-0.03f, 0.1f, 0.047f, 0.035f, 0.1f, 0.01f, 0.005f, 1);
+                m.fixed(0xFFE14D).box(0.04f, 0.1f, 0.047f, 0.025f, 0.1f, 0.01f, 0.005f, 1);
+                break;
+            case Outfits.HD_ICECREAM:
+                m.fixed(0xE8A65A).cone(0, -0.06f, 0, 0.015f, 0.085f, 0.27f, 12);
+                m.fixed(0xFF8AC0).sphere(0, 0.25f, 0, 0.1f, 12);
+                m.fixed(0xFFF6E0).sphere(0, 0.36f, 0, 0.085f, 12);
+                m.fixed(0xFF8AC0).ellipsoid(0.06f, 0.2f, 0.06f, 0.025f, 0.05f, 0.025f, 6);
+                m.fixed(0xFF2244).sphere(0, 0.45f, 0, 0.03f, 6);
+                break;
+            case Outfits.HD_BANANA:
+                for (int k = 0; k < 7; k++) {
+                    float t = k / 6f, a = -0.9f + t * 1.8f;
+                    float z = (1f - (float) Math.cos(a)) * 0.16f, y = 0.05f + (float) Math.sin(a + 0.9f) * 0.22f;
+                    float rr = 0.06f * (1f - Math.abs(t - 0.5f) * 1.1f) + 0.02f;
+                    m.fixed(0xFFE14D).sphere(0, y, z, rr, 8);
+                }
+                m.fixed(0x6B4A2A).sphere(0, 0.42f, 0.13f, 0.02f, 5);
+                break;
+            case Outfits.HD_CHICKEN:
+                // a rubber chicken by its feet, screaming
+                for (int k = -1; k <= 1; k += 2) m.fixed(0xFF8A1F).cylinder(k * 0.02f, -0.02f, 0, 0.012f, 0f, 0.1f, 0.004f, 5);
+                m.fixed(0xFFE14D).ellipsoid(0, 0.2f, 0, 0.075f, 0.13f, 0.07f, 10);
+                m.fixed(0xFFE14D).cylinder(0, 0.3f, 0.01f, 0.03f, 0f, 0.14f, 0.01f, 8);
+                m.fixed(0xFFE14D).sphere(0, 0.46f, 0.02f, 0.055f, 10);
+                m.fixed(0xFF2E3A).box(0, 0.52f, 0.0f, 0.02f, 0.05f, 0.08f, 0.01f, 1);
+                m.push().translate(0, 0.45f, 0.07f).rotateX(PI / 2);
+                m.fixed(0xFF8A1F).cone(0, 0, 0, 0.025f, 0.004f, 0.06f, 6);
+                m.pop();
+                m.fixed(INK).sphere(0.035f, 0.48f, 0.05f, 0.012f, 4);
+                m.fixed(INK).sphere(-0.035f, 0.48f, 0.05f, 0.012f, 4);
+                for (int k = -1; k <= 1; k += 2) m.fixed(0xFFD23B).ellipsoid(k * 0.075f, 0.2f, 0, 0.02f, 0.08f, 0.05f, 6);
+                break;
+            case Outfits.HD_BALLOON:
+                m.fixed(0xFFFFFF).cylinder(0, 0, 0, 0.007f, -0.05f, 0.62f, 0f, 4);
+                m.fixed(0xFF2E4A).cone(0, 0.6f, 0, 0.012f, 0.03f, 0.04f, 6);
+                m.fixed(0xFF2E4A).ellipsoid(0, 0.84f, 0, 0.2f, 0.24f, 0.2f, 14);
+                m.fixed(0xFFB8C4).ellipsoid(-0.08f, 0.92f, 0.13f, 0.04f, 0.06f, 0.02f, 6);
+                break;
+            case Outfits.HD_PHONE:
+                m.fixed(0x2A2433).box(0, 0.11f, 0, 0.13f, 0.25f, 0.025f, 0.02f, 1);
+                m.fixed(0x6FE8FF).box(0, 0.115f, 0.012f, 0.105f, 0.2f, 0.006f, 0.004f, 1);
+                m.fixed(0xFF6FB5).box(0, 0.115f, -0.012f, 0.12f, 0.24f, 0.006f, 0.01f, 1);
+                break;
+            case Outfits.HD_TACO:
+                m.fixed(0xFFC94D).ellipsoid(0, 0.13f, 0, 0.05f, 0.13f, 0.17f, 12);
+                for (int k = 0; k < 5; k++) {
+                    float z = -0.1f + k * 0.05f;
+                    m.fixed(k % 2 == 0 ? 0x5ED64A : 0xFF4040).sphere(k % 2 == 0 ? 0.02f : -0.02f, 0.235f, z, 0.04f, 6);
+                }
+                m.fixed(0x8A4B2A).sphere(0, 0.22f, 0.01f, 0.045f, 6);
+                break;
+            case Outfits.HD_LOLLIPOP:
+                m.fixed(0xFFFFFF).cylinder(0, -0.04f, 0, 0.014f, 0f, 0.32f, 0.005f, 6);
+                m.push().translate(0, 0.42f, 0).rotateX(PI / 2);
+                m.fixed(0xFF4FA3).cylinder(0, 0, 0, 0.14f, -0.025f, 0.025f, 0.012f, 16);
+                for (int s = -1; s <= 1; s += 2) {
+                    m.push().translate(0, s * 0.026f, 0).scale(1f, 0.25f, 1f);
+                    m.fixed(0xFFFFFF).torus(0, 0, 0, 0.095f, 0.016f, 16, 4);
+                    m.fixed(0xFFFFFF).torus(0, 0, 0, 0.045f, 0.016f, 12, 4);
+                    m.pop();
+                }
+                m.pop();
+                break;
+            case Outfits.HD_FLAG:
+                m.fixed(0xD8DEEA).cylinder(0, -0.08f, 0, 0.014f, 0f, 0.78f, 0.005f, 6);
+                m.fixed(0xFFD23B).sphere(0, 0.71f, 0, 0.025f, 6);
+                for (int col = 0; col < 4; col++) {
+                    for (int row = 0; row < 3; row++) {
+                        float x = 0.05f + col * 0.07f, y = 0.65f - row * 0.07f;
+                        float z = (float) Math.sin(col * 1.4f) * 0.02f;
+                        m.fixed((col + row) % 2 == 0 ? INK : 0xFFFFFF).box(x, y, z, 0.07f, 0.07f, 0.012f, 0f, 1);
+                    }
+                }
+                break;
+            case Outfits.HD_TROPHY:
+                m.fixed(0x3A3550).box(0, 0.03f, 0, 0.14f, 0.06f, 0.14f, 0.015f, 1);
+                m.fixed(0xFFC83D).lathe(new float[]{0.05f, 0.06f, 0.025f, 0.1f, 0.025f, 0.16f, 0.03f, 0.18f, 0.03f, 0.18f, 0.11f, 0.24f,
+                        0.12f, 0.36f, 0.12f, 0.36f, 0.1f, 0.36f, 0.1f, 0.36f, 0f, 0.3f}, 16);
+                for (int s = -1; s <= 1; s += 2) {
+                    m.push().translate(s * 0.12f, 0.3f, 0).rotateX(PI / 2);
+                    m.fixed(0xFFC83D).torus(0, 0, 0, 0.045f, 0.012f, 12, 4);
+                    m.pop();
+                }
+                m.push().translate(0, 0.28f, 0.11f).rotateX(PI / 2);
+                m.fixed(0xFFF0A0).extrude(starPoly(0.04f, 0.018f), -0.005f, 0.008f);
+                m.pop();
+                break;
+            case Outfits.HD_MEGAPHONE:
+                m.fixed(0x3A3550).box(0, 0.05f, 0, 0.045f, 0.12f, 0.05f, 0.015f, 1);
+                m.push().translate(0, 0.14f, -0.06f).rotateX(PI / 2);
+                m.fixed(0xFFFFFF).cone(0, 0, 0, 0.05f, 0.14f, 0.3f, 14);
+                m.fixed(0xFF3B4F).cone(0, 0.2f, 0, 0.1f, 0.123f, 0.05f, 14);
+                m.fixed(0xFF3B4F).cylinder(0, -0.03f, 0, 0.05f, 0f, 0.04f, 0.01f, 12);
+                m.fixed(0x3A3550).cylinder(0, 0.29f, 0, 0.12f, 0f, 0.015f, 0f, 14);
+                m.pop();
+                break;
+            case Outfits.HD_WAND:
+                m.fixed(0x2A2433).cylinder(0, -0.06f, 0, 0.016f, 0f, 0.44f, 0.006f, 6);
+                m.fixed(0xFFFFFF).cylinder(0, 0.3f, 0, 0.018f, 0f, 0.08f, 0.006f, 6);
+                m.push().translate(0, 0.46f, 0).rotateX(PI / 2);
+                m.fixed(0xFFD23B).extrude(starPoly(0.1f, 0.045f), -0.02f, 0.02f);
+                m.pop();
+                m.fixed(0xFFFFFF).sphere(0.12f, 0.52f, 0.02f, 0.018f, 4);
+                m.fixed(0xFFFFFF).sphere(-0.1f, 0.58f, -0.01f, 0.014f, 4);
+                break;
+            default: // a huge diamond held up high
+                m.push().translate(0, -0.02f, 0);
+                gem(m, 0.17f, 0.3f, 8, 0xBFF4FF, 0x6FCBFF);
                 m.pop();
                 break;
         }

@@ -40,6 +40,14 @@ public final class Save {
     public final boolean[] trailOwned = new boolean[Trails.COUNT];
     /** Equipped match look. map = -1 picks a random owned map every match. */
     public int map = 0, skin = 0, sky = 0, theme = 0, trail = 0;
+    /** The driver: what it wears (one item per Outfits part) and the owned items of each part. */
+    public final int[] look = new int[Outfits.PARTS];
+    public final boolean[][] lookOwned = new boolean[Outfits.PARTS][];
+    /** Victory emotes owned, and the ones in the line-up for the results screen (see Items.EMOTE). */
+    public final boolean[] emoteOwned = new boolean[Emotes.COUNT], emoteOn = new boolean[Emotes.COUNT];
+    /** Bits of SEEN_*: places that showed the new things that came with drivers and emotes (their NEW badges go). */
+    public int seen;
+    public static final int SEEN_SHOP = 1, SEEN_DRIVER = 2, SEEN_EMOTES = 4;
 
     // settings
     public boolean sound = true, music = true, vibration = true, shake = true, symbols = true, leftHanded = false;
@@ -58,6 +66,7 @@ public final class Save {
 
     public Save(Platform platform) {
         this.platform = platform;
+        for (int p = 0; p < Outfits.PARTS; p++) lookOwned[p] = new boolean[Outfits.count(p)];
         reset();
     }
 
@@ -88,6 +97,9 @@ public final class Save {
             }
         }
         map = skin = sky = theme = trail = 0;
+        Outfits.defaults(look);
+        System.arraycopy(emoteOwned, 0, emoteOn, 0, emoteOn.length);
+        seen = 0;
         matches = wins = bestPlace = bonks = roundsSurvived = ties = 0;
         for (int i = 0; i < stats.length; i++) stats[i] = 0;
         for (int i = 0; i < achDone.length; i++) achDone[i] = false;
@@ -216,6 +228,31 @@ public final class Save {
             xp = Math.min(Levels.xpAt(50), matches * 40 + wins * 80 + bonks * 8 + roundsSurvived * 4);
             rewardedLevel = 1;
         }
+        // the driver (profiles from before drivers get the default look); wardrobe level rewards of levels passed
+        // before they existed are handed out here
+        for (int k = 0; k < Outfits.PARTS; k++) {
+            bits(p.getProperty("dr" + k), lookOwned[k]);
+            for (int i = 0; i < lookOwned[k].length; i++) {
+                if (Outfits.RULE[k][i] == Items.LEVEL && Outfits.VALUE[k][i] <= rewardedLevel) lookOwned[k][i] = true;
+            }
+        }
+        // victory emotes (the same for profiles from before them); the line-up is everything owned unless saved
+        bits(p.getProperty("emo"), emoteOwned);
+        for (int i = 0; i < Emotes.COUNT; i++) {
+            if (Emotes.RULE[i] == Items.LEVEL && Emotes.VALUE[i] <= rewardedLevel) emoteOwned[i] = true;
+        }
+        String on = p.getProperty("emoon");
+        for (int i = 0; i < Emotes.COUNT; i++) {
+            emoteOn[i] = emoteOwned[i] && (on == null || i >= on.length() || on.charAt(i) == '1');
+        }
+        seen = geti(p, "seen", 0);
+        String lk = p.getProperty("look");
+        if (lk != null) {
+            String[] t = lk.split(",");
+            for (int k = 0; k < Outfits.PARTS && k < t.length; k++) look[k] = parse(t[k], look[k]);
+            Outfits.sanitize(look);
+            for (int k = 0; k < Outfits.PARTS; k++) if (!lookOwned[k][look[k]]) look[k] = Outfits.first(k);
+        }
         dev = geti(p, "x1", 0) == 1;
         bits(p.getProperty("x2"), devFlags);
         secretSeen = geti(p, "x3", 0) == 1;
@@ -254,6 +291,13 @@ public final class Save {
         put(sb, "selsky", sky);
         put(sb, "seltheme", theme);
         put(sb, "seltrail", trail);
+        for (int k = 0; k < Outfits.PARTS; k++) sb.append("dr").append(k).append('=').append(bits(lookOwned[k])).append('\n');
+        sb.append("look=");
+        for (int k = 0; k < Outfits.PARTS; k++) sb.append(k > 0 ? "," : "").append(look[k]);
+        sb.append('\n');
+        sb.append("emo=").append(bits(emoteOwned)).append('\n');
+        sb.append("emoon=").append(bits(emoteOn)).append('\n');
+        put(sb, "seen", seen);
         put(sb, "sound", sound ? 1 : 0);
         put(sb, "music", music ? 1 : 0);
         put(sb, "vib", vibration ? 1 : 0);

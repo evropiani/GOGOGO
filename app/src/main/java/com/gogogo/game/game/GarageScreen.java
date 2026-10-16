@@ -65,6 +65,8 @@ public final class GarageScreen extends Screen {
             room.car.paint = 15;
         } else {
             room.show(carIdx, s.carPaint[carIdx], s.carAccent[carIdx], s.carTopper[carIdx], s.carWheel[carIdx], animate);
+            // the driver shows off the car's own emote once it has landed
+            room.emote(Emotes.signature(carIdx), animate ? 0.8f : 0.4f);
         }
         pendingKind = -1;
     }
@@ -109,6 +111,7 @@ public final class GarageScreen extends Screen {
         if (ui.roundButton("back", left + 40, top + 52, 38, 0xFFFFFFFF)) game.setScreen(new TitleScreen(game));
         ui.iconBack(left + 40, top + 52 + ui.lastRoundPress, 38, 0xFF2A1840);
         b.textShadow(b.title, "GARAGE", left + 100, top + 56, 56f, 0xFFFFFFFF, UIBatch.LEFT, 0xFF2A1840, 6f, 6f, 0x50200040);
+        room.drawWord(b, top + 150);
         float cw = TitleScreen.coinPill(game, W - right, top + 52);
         TitleScreen.rimsPill(game, W - right - cw - 14, top + 52);
 
@@ -224,6 +227,7 @@ public final class GarageScreen extends Screen {
                 s.flush();
                 room.car.squashV = -8f;
                 game.sfx.play(Sfx.HONK, 1f, 1f);
+                room.emote(Emotes.signature(carIdx), 0.2f);
             }
         } else if (Items.rule(Items.CAR, carIdx) == Items.LEVEL) {
             int lv = s.level();

@@ -4,11 +4,14 @@ import com.gogogo.game.engine.Rng;
 
 /** Simple, slightly goofy opponent brain. */
 public final class Bot {
+    /** Overall skill, 0 = clueless .. 1 = scary. The traits below scatter around it. */
+    public final float skill;
     public final float reaction;   // seconds before reacting to a new color
     public final float mistake;    // chance to go for a wrong color
     public final float aggression; // likes ramming people off islands
     public final float smarts;     // avoids crowds, plans boost
     public final float wits;       // how well it uses power-ups
+    private final float sloppy;    // how far from a tile's middle it parks, and how rarely it rethinks its way around holes
     public boolean dumb;           // dev option
 
     public Arena.Tile goal;
@@ -19,34 +22,54 @@ public final class Bot {
     private float rethinkT;
     private int victim = -1;
 
-    public Bot(Rng rng, int tier) {
-        switch (tier) {
-            case 0: // noob
-                reaction = rng.range(0.55f, 1.05f);
-                mistake = rng.range(0.07f, 0.14f);
-                aggression = rng.range(0f, 0.3f);
-                smarts = rng.range(0f, 0.3f);
-                wits = rng.range(0.15f, 0.45f);
-                jumpLead = rng.range(0.15f, 0.8f);
-                break;
-            case 2: // pro
-                reaction = rng.range(0.16f, 0.32f);
-                mistake = rng.range(0.0f, 0.02f);
-                aggression = rng.range(0.4f, 1f);
-                smarts = rng.range(0.7f, 1f);
-                wits = rng.range(0.8f, 1f);
-                jumpLead = rng.range(0.1f, 0.3f);
-                break;
-            default:
-                reaction = rng.range(0.3f, 0.6f);
-                mistake = rng.range(0.02f, 0.06f);
-                aggression = rng.range(0.1f, 0.7f);
-                smarts = rng.range(0.3f, 0.7f);
-                wits = rng.range(0.45f, 0.8f);
-                jumpLead = rng.range(0.1f, 0.45f);
-                break;
-        }
+    public Bot(Rng rng, float skill) {
+        skill = clamp01(skill);
+        this.skill = skill;
+        float dull = 1f - skill;
+        // every trait follows the skill with a bit of its own luck, so two bots of the same skill still differ
+        reaction = (0.16f + 0.85f * dull * dull) * rng.range(0.8f, 1.2f);
+        mistake = 0.15f * dull * dull * rng.range(0.6f, 1.4f);
+        aggression = clamp01(0.2f + 0.4f * skill + rng.range(-0.35f, 0.35f));
+        smarts = clamp01(skill + rng.range(-0.12f, 0.12f));
+        wits = clamp01(0.1f + 0.95f * skill + rng.range(-0.12f, 0.12f));
+        jumpLead = rng.range(0.1f, 0.3f + 0.5f * dull);
+        sloppy = clamp01(dull + rng.range(-0.15f, 0.15f));
         wobble = rng.range(0f, 100f);
+    }
+
+    /** Skill of a new bot: mostly average ones, some clueless ones and a few very good ones. */
+    public static float randomSkill(Rng rng) {
+        float r = rng.f();
+        if (r < 0.12f) return rng.range(0f, 0.2f);
+        if (r > 0.9f) return rng.range(0.7f, 1f);
+        return 0.15f + 0.65f * (rng.f() + rng.f() + rng.f()) / 3f;
+    }
+
+    /** Upgrade level (0..CarDef.MAX_LEVEL) of one stat of a bot's car: anything goes, but good bots tend to be tuned up. */
+    public static int randomLevel(Rng rng, float skill) {
+        float t = clamp01(0.6f * rng.f() + 0.4f * skill + rng.range(-0.15f, 0.15f));
+        // about 40% stock, then fewer and fewer up to a few fully tuned stats
+        return Math.min(CarDef.MAX_LEVEL, (int) ((float) Math.pow(t, 2.2) * (CarDef.MAX_LEVEL + 2)));
+    }
+
+    private static float clamp01(float v) {
+        return Math.max(0f, Math.min(1f, v));
+    }
+
+    /** How good a bot is, in words (shown while spectating it), and the color of each. */
+    private static final String[] RANK = {"SKILL: CLUELESS", "SKILL: ROOKIE", "SKILL: DECENT", "SKILL: SHARP", "SKILL: PRO"};
+    private static final int[] RANK_COLOR = {0xFFB8B0C8, 0xFF8FE36A, 0xFF5EC8FF, 0xFFFFB321, 0xFFFF4FA3};
+
+    private int rankIndex() {
+        return Math.min(RANK.length - 1, (int) (skill * RANK.length));
+    }
+
+    public String rank() {
+        return RANK[rankIndex()];
+    }
+
+    public int rankColor() {
+        return RANK_COLOR[rankIndex()];
     }
 
     public void think(Match m, Car c, float dt) {
@@ -92,7 +115,11 @@ public final class Bot {
             scanT = m.rng.range(0.1f, 0.2f);
             seen = worthIt(m, c, type);
             if (!seen) powerT = -1f;
-            else if (powerT < 0f) powerT = reaction * m.rng.range(0.7f, 1.5f) + (1f - wits) * m.rng.range(0.2f, 1.2f);
+            else if (powerT < 0f) {
+                powerT = reaction * m.rng.range(0.7f, 1.5f) + (1f - wits) * m.rng.range(0.2f, 1.2f);
+                // a straight run is over quickly: nitro needs a quick foot
+                if (type == PowerUps.NITRO) powerT *= 0.35f;
+            }
         }
         if (powerT >= 0f && seen) {
             powerT -= dt;
@@ -103,10 +130,11 @@ public final class Bot {
         }
     }
 
-    /** Is there something to throw at / shove right now? */
+    /** Is there something to throw at / shove / race to right now? */
     private boolean worthIt(Match m, Car c, int type) {
         if (type == PowerUps.SNOWBALL) return m.power.snowTarget(c) >= 0;
         if (type == PowerUps.ICE) return m.power.iceTarget(c) >= 0;
+        if (type == PowerUps.NITRO) return nitroRun(m, c);
         // super bump: a crowd, or anyone close while the floor is dropping and this car stands near an edge
         Arena.Tile here = m.arena.cellAt(c.x, c.z);
         boolean edgy = m.phase == Match.DROP && here != null && here.state == Arena.PRESENT;
@@ -118,6 +146,24 @@ public final class Bot {
             if (dx * dx + dz * dz < r * r) near++;
         }
         return near >= 3 || (near >= 2 && m.rng.chance(0.4f + wits * 0.4f)) || (edgy && near >= 1 && m.rng.chance(0.3f * wits));
+    }
+
+    /**
+     * Nitro: lined up for a long straight run to the goal (or running late), with nothing but floor in between;
+     * the rough ones also floor it when somebody stands in the way. The clueless ones sometimes just floor it.
+     */
+    private boolean nitroRun(Match m, Car c) {
+        if (m.phase != Match.SHOW || c.nitroT > 0 || thinkT > 0) return false;
+        if (wits < 0.4f && m.rng.chance((0.4f - wits) * 0.05f)) return true;
+        Arena.Tile g = goal;
+        if (g == null || g.state != Arena.PRESENT) return false;
+        float dx = g.x - c.x, dz = g.z - c.z;
+        float d = (float) Math.sqrt(dx * dx + dz * dz);
+        if (d < 8f) return false;
+        float facing = (dx * (float) Math.sin(c.yaw) + dz * (float) Math.cos(c.yaw)) / d;
+        if (facing < 0.9f || !m.arena.clearLine(c.x, c.z, g.x, g.z, 1.2f)) return false;
+        float need = d / Math.max(4f, c.maxSpeed);
+        return d > 11f || need > m.timer * 0.5f || (aggression > 0.6f && m.power.snowTarget(c) >= 0);
     }
 
     /** Just started falling while holding a super jump: jump out, if it reacts in time. */
@@ -243,12 +289,15 @@ public final class Bot {
             }
             c.inX = dx / d;
             c.inZ = dz / d;
-            // don't ram yourself off the edge, and only boost into someone with floor behind them
-            float ex = c.x + c.inX * 2.5f, ez = c.z + c.inZ * 2.5f;
+            // don't ram yourself off the edge (good drivers look further ahead, more so at speed), and only boost
+            // into someone with floor behind them (good drivers also make sure they won't fly off after them)
+            float look = 2.5f + skill * (1.5f + c.speed() * 0.12f);
+            float ex = c.x + c.inX * look, ez = c.z + c.inZ * look;
             if (m.arena.cellAt(ex, ez) != here) {
                 victim = -1;
             } else if (close && c.boostCd <= 0 && m.rng.chance(0.08f)
-                    && m.arena.clearLine(c.x, c.z, c.x + c.inX * 7f, c.z + c.inZ * 7f, 0.5f)) {
+                    && m.arena.clearLine(c.x, c.z, c.x + c.inX * 7f, c.z + c.inZ * 7f, 0.5f)
+                    && m.arena.supported(c.x + c.inX * 5f * skill, c.z + c.inZ * 5f * skill)) {
                 c.wantBoost = true;
             }
         }
@@ -294,8 +343,10 @@ public final class Bot {
         if (goal != null) goal.crowd = Math.max(0, goal.crowd - 1);
         goal = best;
         if (goal != null) goal.crowd++;
-        aim = m.rng.range(-0.25f, 0.25f) * Arena.PITCH;
-        aim2 = m.rng.range(-0.25f, 0.25f) * Arena.PITCH;
+        // sloppy drivers park anywhere on the tile, careful ones near its middle
+        float spread = 0.12f + 0.2f * sloppy;
+        aim = m.rng.range(-spread, spread) * Arena.PITCH;
+        aim2 = m.rng.range(-spread, spread) * Arena.PITCH;
     }
 
     private float aim, aim2;
@@ -318,7 +369,7 @@ public final class Bot {
         if (here.index == wayFrom && t.index == wayGoal && wayT > 0) return wayCell;
         wayFrom = here.index;
         wayGoal = t.index;
-        wayT = 0.25f;
+        wayT = 0.15f + 0.25f * sloppy;
         wayCell = -1;
         if (a.clearLine(c.x, c.z, gx, gz, MARGIN)) return -1;
         int best = a.nextStep(here.index, t.index);

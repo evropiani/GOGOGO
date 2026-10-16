@@ -12,6 +12,8 @@ public final class ShopScreen extends Screen {
 
     private final Screen back;
     private final int[] pickCat, pickIdx;
+    /** The driver stuff and emotes are new: they come first, tagged NEW until the shop has been visited once. */
+    private final boolean showNew;
     private int confirm = -1;
     private float t;
     private String toast;
@@ -23,6 +25,7 @@ public final class ShopScreen extends Screen {
         super(game);
         this.back = back;
         game.ui.resetScroll("shop");
+        showNew = (game.save.seen & Save.SEEN_SHOP) == 0;
         int n = 0;
         for (int cat = 0; cat < Items.CATEGORIES; cat++) {
             for (int i = 0; i < Items.count(cat); i++) if (Items.rule(cat, i) == Items.RIMS) n++;
@@ -30,12 +33,17 @@ public final class ShopScreen extends Screen {
         pickCat = new int[n];
         pickIdx = new int[n];
         n = 0;
-        for (int cat = 0; cat < Items.CATEGORIES; cat++) {
-            for (int i = 0; i < Items.count(cat); i++) {
-                if (Items.rule(cat, i) != Items.RIMS) continue;
-                pickCat[n] = cat;
-                pickIdx[n] = i;
-                n++;
+        // the new stuff (victory emotes, then the wardrobe) first, everything else after it
+        for (int pass = 0; pass < 2; pass++) {
+            for (int c = 0; c < Items.CATEGORIES; c++) {
+                int cat = pass == 0 ? (c + Items.EMOTE) % Items.CATEGORIES : c;
+                if (Items.driverStuff(cat) != (pass == 0)) continue;
+                for (int i = 0; i < Items.count(cat); i++) {
+                    if (Items.rule(cat, i) != Items.RIMS) continue;
+                    pickCat[n] = cat;
+                    pickIdx[n] = i;
+                    n++;
+                }
             }
         }
     }
@@ -149,6 +157,7 @@ public final class ShopScreen extends Screen {
                 ui.iconCheck(x + pw - 36, yy + 60, 22, 0xFFFFFFFF);
             } else {
                 ui.iconLabel(x + pw - 52, yy + 62, 90, null, UI.ICON_RIM, String.valueOf(Items.value(cat, idx)), 26f, 0xFF2A9FD8, 0, 0);
+                if (showNew && Items.driverStuff(cat)) DriverScreen.newBadge(b, x + pw - 40, yy + 4, 0.75f, t + k * 0.3f);
             }
         }
         ui.endScroll();
@@ -211,13 +220,23 @@ public final class ShopScreen extends Screen {
         return 0;
     }
 
-    /** Jumps to where the item can be bought: the garage for car stuff, the locker for the rest. */
+    /**
+     * Jumps to where the item can be bought: the garage for car stuff, the DRIVER screen for the wardrobe and the
+     * emotes, the locker for the rest.
+     */
     private void open(int cat, int idx) {
         if (cat <= Items.WHEEL) game.setScreen(new GarageScreen(game).focus(cat, idx));
+        else if (Items.driverStuff(cat)) game.setScreen(new DriverScreen(game).focus(cat, idx));
         else game.setScreen(new LockerScreen(game, cat - Items.MAP).focus(idx));
     }
 
     private void leave() {
+        Save s = game.save;
+        if ((s.seen & Save.SEEN_SHOP) == 0) {
+            s.seen |= Save.SEEN_SHOP;
+            s.markDirty();
+            s.flush();
+        }
         game.setScreen(back != null ? back : new TitleScreen(game));
     }
 

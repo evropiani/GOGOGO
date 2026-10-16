@@ -19,6 +19,8 @@ public final class Match {
      */
     public static final int EV_PICKUP = 14, EV_POWER = 15, EV_SPLAT = 16, EV_FREEZE = 17, EV_THAW = 18, EV_LANDED = 19,
             EV_SHOCK = 20, EV_RESCUE = 21;
+    /** Car a started its emote (value = the Emotes move). */
+    public static final int EV_EMOTE = 22;
 
     public interface Listener {
         void event(int type, Car a, Car b, float value);
@@ -42,6 +44,8 @@ public final class Match {
     /** Start lights: red, then yellow, then green when the first round starts (at INTRO_TIME). */
     public static final float LIGHT_RED = INTRO_TIME - 1.7f, LIGHT_YELLOW = INTRO_TIME - 0.85f;
     public static final float DROP_TIME = 2.2f;
+    /** Seconds between two emotes: the player's (the EMOTE button), a bot's. */
+    public static final float EMOTE_CD = 3f, BOT_EMOTE_CD = 8f;
 
     public final Arena arena;
     public final Rng rng;
@@ -73,6 +77,12 @@ public final class Match {
     public boolean duckSpawned, duckCollected, duckLost;
     public float duckX, duckY, duckZ, duckVy;
 
+    /** Where the camera is (set by the view each frame): emotes play towards it. */
+    public float viewX, viewZ;
+    /** Bot taunts: their own random sequence (the match's stays as it was), and how many may start soon. */
+    private final Rng fun;
+    private float tauntBudget = 2f;
+
     private float acc;
     private float finishT;
     private int countdown = 4;
@@ -103,7 +113,8 @@ public final class Match {
             player.god = opt.god;
             player.manual = true;
             player.trail = save.trail;
-            if (opt.autopilot) player.bot = new Bot(rng, 2);
+            player.driver.setLook(save.look);
+            if (opt.autopilot) player.bot = new Bot(rng, 0.9f);
             cars[k++] = player;
         }
         for (; k < n; k++) {
@@ -111,11 +122,12 @@ public final class Match {
             do {
                 id = rng.i(Cars.ALL.length);
             } while (!Cars.forBots(id));
-            int tier = rng.f() < 0.3f ? 0 : (rng.f() < 0.86f ? 1 : 2);
+            // every bot gets its own skill, and its car its own upgrades (each stat on its own)
+            float skill = Bot.randomSkill(rng);
             int[] lv = new int[4];
-            for (int i = 0; i < 4; i++) lv[i] = rng.i(tier + 2);
+            for (int i = 0; i < 4; i++) lv[i] = Bot.randomLevel(rng, skill);
             Car c = new Car(k, Cars.ALL[id], names[k], false, lv);
-            c.bot = new Bot(rng, tier);
+            c.bot = new Bot(rng, skill);
             c.bot.dumb = opt.dumbBots;
             int paint = rng.chance(0.5f) ? Cars.ALL[id].defPaint : botPaint();
             int accent = rng.chance(0.6f) ? Cars.ALL[id].defAccent : botPaint();
@@ -124,6 +136,13 @@ public final class Match {
             c.setLook(paint, accent, topper, wheel);
             c.trail = rng.chance(0.3f) ? rng.i(Trails.COUNT) : 0;
             cars[k] = c;
+        }
+        fun = new Rng(seed * 17L + 3L);
+        // the bots' drivers dress up from their own sequence (the match's rng stays as it was)
+        Rng looks = new Rng(seed * 31L + 7L);
+        for (Car c : cars) {
+            if (!c.isPlayer) Outfits.random(looks, c.driver.look);
+            c.driver.settle();
         }
         placeCars();
         alive = n;
@@ -284,6 +303,8 @@ public final class Match {
             case SHOW: {
                 if (!opt.freezeTimer) timer -= dt;
                 trackClutch();
+                if (timer <= LATE_TIME && timer + dt > LATE_TIME) markLate();
+                if (timer <= GLOAT_TIME && timer + dt > GLOAT_TIME) gloatAtPlayer();
                 int sec = (int) Math.ceil(timer);
                 if (sec != lastTick && sec <= 3 && sec >= 1) {
                     lastTick = sec;
@@ -302,6 +323,7 @@ public final class Match {
                 break;
             }
             case DROP:
+                if (phaseT >= 1.3f && phaseT - dt < 1.3f) closeCalls();
                 if (phaseT >= DROP_TIME && alive > 1) startRound();
                 break;
             default:
@@ -312,9 +334,13 @@ public final class Match {
         for (Car c : cars) {
             if (c.bot != null && c.alive) c.bot.think(this, c, dt);
         }
+        stepEmotes(dt);
         power.useRequested(canDrive);
         for (Car c : cars) {
-            if (!c.alive && c.y < -80f) continue;
+            if (!c.alive && c.y < -80f) {
+                if (c.driver.flung) c.driver.tumble(dt);
+                continue;
+            }
             c.step(arena, dt, canDrive && c.alive);
             // out once it loses its footing; holding a super jump buys a moment to jump out of the fall
             if (c.alive && c.falling && (c.power != PowerUps.JUMP || c.fallT >= PowerUps.RESCUE_TIME || !canDrive)) justFell.add(c);
@@ -338,14 +364,22 @@ public final class Match {
                 c.alive = false;
                 c.elimTime = time;
                 c.place = after + 1;
+                c.driver.fling(c);
                 if (c.lastHitBy >= 0 && time - c.lastHitTime < 2.2f) {
                     Car k = cars[c.lastHitBy];
                     if (k.alive) {
                         k.bonks++;
+                        if (c.lastHitPower == PowerUps.NITRO) k.nitroBonks++;
+                        k.lastBonkTime = time;
                         emit(EV_BONK, k, c, 0);
+                        // a bot that knocks someone off rubs it in (almost always when it was the player: just as the
+                        // camera comes over to it)
+                        if (c == player) taunt(k, 1.05f + fun.f() * 0.2f, 0.85f, true);
+                        else taunt(k, 0.3f + fun.f() * 0.4f, 0.2f, false);
                     }
                 }
                 emit(EV_ELIM, c, null, after + 1);
+                if (c == player) laughAtPlayer();
             }
             alive = after;
             justFell.clear();
@@ -379,6 +413,9 @@ public final class Match {
                     phase = OVER;
                     phaseT = 0;
                     emit(EV_WIN, winner, null, 0);
+                    // the winner shows off
+                    winner.emoteCd = 0f;
+                    winner.tauntIn = 0.7f;
                 }
             } else {
                 finishT = 0;
@@ -454,7 +491,8 @@ public final class Match {
                 float vrel = (b.vx - a.vx) * nx + (b.vz - a.vz) * nz;
                 if (vrel < 0) {
                     boolean boost = a.boostT > 0 || b.boostT > 0;
-                    float factor = boost ? 2.3f : 1.15f;
+                    boolean nitro = a.nitroT > 0 || b.nitroT > 0;
+                    float factor = boost ? 2.3f : (nitro ? 1.15f * PowerUps.NITRO_RAM : 1.15f);
                     float j0 = -(1f + 0.55f) * vrel / tot * factor;
                     j0 += 0.5f / tot; // always a little bouncy
                     a.vx -= j0 * ia * nx;
@@ -463,12 +501,13 @@ public final class Match {
                     b.vz += j0 * ib * nz;
                     float strength = -vrel * factor;
                     if (strength > 3f) {
+                        // (rammed by a car burning nitro counts as a nitro hit)
                         a.lastHitBy = b.index;
                         a.lastHitTime = time;
-                        a.lastHitPower = -1;
+                        a.lastHitPower = b.nitroT > 0 ? PowerUps.NITRO : -1;
                         b.lastHitBy = a.index;
                         b.lastHitTime = time;
-                        b.lastHitPower = -1;
+                        b.lastHitPower = a.nitroT > 0 ? PowerUps.NITRO : -1;
                         float hop = Math.min(5f, strength * 0.25f);
                         if (a.hop <= 0) a.hopV = hop * ib / tot * 2f;
                         if (b.hop <= 0) b.hopV = hop * ia / tot * 2f;
@@ -478,9 +517,117 @@ public final class Match {
                         b.flash = Math.min(1f, strength * 0.06f);
                         a.squashV += strength * 0.5f;
                         b.squashV += strength * 0.5f;
+                        a.jolt(strength, nx, nz);
+                        b.jolt(strength, -nx, -nz);
                         emit(EV_BUMP, a, b, strength);
+                        // shoving the player around is worth a taunt now and then
+                        if (strength > 9f && player != null && (a == player || b == player)) {
+                            taunt(a == player ? b : a, 0.45f, 0.3f, true);
+                        }
                     }
                 }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ emotes
+
+    /** Bots that only reach the target color with less than this many seconds left had a close call. */
+    private static final float LATE_TIME = 0.8f;
+    /** With this many seconds left, bots on the right color near a player on the wrong one may taunt it. */
+    private static final float GLOAT_TIME = 1.8f;
+
+    /** The EMOTE button, queued taunts, cooldowns; and every emoting driver turns to the camera. */
+    private void stepEmotes(float dt) {
+        tauntBudget = Math.min(2.5f, tauntBudget + dt * 0.22f);
+        for (Car c : cars) {
+            if (c.emoteCd > 0) c.emoteCd -= dt;
+            if (c.tauntIn > 0) {
+                c.tauntIn -= dt;
+                if (c.tauntIn <= 0) {
+                    c.tauntIn = 0f;
+                    emote(c);
+                }
+            }
+            if (c.wantEmote) {
+                c.wantEmote = false;
+                emote(c);
+            }
+            if (c.driver.emote >= 0) c.driver.aim = aimOf(c);
+        }
+    }
+
+    /** Plays the car's signature emote if it can (alive, on its wheels, not frozen, not cooling down). */
+    public boolean emote(Car c) {
+        if (!c.alive || c.falling || c.frozenT > 0 || c.driver.flung || c.emoteCd > 0) return false;
+        int move = Emotes.signature(c.def.id);
+        c.driver.aim = aimOf(c);
+        c.driver.play(move);
+        c.emoteCd = c.isPlayer ? EMOTE_CD : BOT_EMOTE_CD;
+        c.emotes++;
+        if (time - c.lastBonkTime < 3f) c.gloats++;
+        emit(EV_EMOTE, c, null, move);
+        return true;
+    }
+
+    /** Which way the camera is from the car, as a turn from where it is heading. */
+    private float aimOf(Car c) {
+        float a = (float) Math.atan2(viewX - c.x, viewZ - c.z) - c.yaw;
+        while (a > Math.PI) a -= 2f * (float) Math.PI;
+        while (a < -Math.PI) a += 2f * (float) Math.PI;
+        return a;
+    }
+
+    /**
+     * Maybe queues a taunt (its emote, delay seconds from now) for a bot. Taunts share a budget so they stay a treat;
+     * important ones (aimed at the player) may overdraw it a little.
+     */
+    private void taunt(Car c, float delay, float chance, boolean important) {
+        if (c == null || c.isPlayer || c.bot == null || !c.alive || c.falling) return;
+        if (c.tauntIn > 0 || c.emoteCd > 0 || c.driver.emoting()) return;
+        if (tauntBudget < (important ? -1f : 1f) || fun.f() > chance) return;
+        tauntBudget -= 1f;
+        c.tauntIn = delay;
+    }
+
+    private boolean onTarget(Car c) {
+        Arena.Tile t = arena.cellAt(c.x, c.z);
+        return t != null && t.exists && t.state == Arena.PRESENT && t.color == target && !c.airborne;
+    }
+
+    private void markLate() {
+        for (Car c : cars) c.late = c.alive && !c.isPlayer && !onTarget(c);
+    }
+
+    /** Bots that made it at the very last moment cheer about it. */
+    private void closeCalls() {
+        for (Car c : cars) {
+            if (c.late && c.alive) taunt(c, fun.range(0f, 0.5f), 0.2f, false);
+            c.late = false;
+        }
+    }
+
+    /** The player is on the wrong color with time running out: bots close by that are safe rub it in. */
+    private void gloatAtPlayer() {
+        Car p = player;
+        if (p == null || !p.alive || onTarget(p)) return;
+        for (Car c : cars) {
+            if (c == p || !c.alive) continue;
+            float dx = c.x - p.x, dz = c.z - p.z;
+            if (dx * dx + dz * dz < 12f * 12f && onTarget(c)) taunt(c, fun.range(0f, 0.6f), 0.35f, true);
+        }
+    }
+
+    /** The player just fell: a few bots close by have a laugh. */
+    private void laughAtPlayer() {
+        Car p = player;
+        int n = 0;
+        for (Car c : cars) {
+            if (n >= 3 || c == p || !c.alive) continue;
+            float dx = c.x - p.x, dz = c.z - p.z;
+            if (dx * dx + dz * dz < 16f * 16f && c.tauntIn <= 0) {
+                taunt(c, 0.25f + n * 0.25f + fun.f() * 0.15f, 0.5f, true);
+                if (c.tauntIn > 0) n++;
             }
         }
     }

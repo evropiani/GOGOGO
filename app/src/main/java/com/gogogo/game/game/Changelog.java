@@ -4,9 +4,22 @@ package com.gogogo.game.game;
 public final class Changelog {
     private Changelog() {}
 
-    public static final String[] VERSION = {"1.3.0", "1.2.0", "1.1.1", "1.1.0", "1.0.0"};
-    public static final String[] TITLE = {"POWER-UPS!", "LEVELS & LOCKER", "BIG SCREENS", "LANDSCAPE!", "FIRST RELEASE"};
+    public static final String[] VERSION = {"1.4.0", "1.3.0", "1.2.0", "1.1.1", "1.1.0", "1.0.0"};
+    public static final String[] TITLE = {"DRIVERS & EMOTES", "POWER-UPS!", "LEVELS & LOCKER", "BIG SCREENS", "LANDSCAPE!", "FIRST RELEASE"};
     public static final String[][] ITEMS = {
+            {
+                    "Every car now has a floppy ragdoll driver who wobbles, flails and flies out when you get knocked off.",
+                    "Dress your driver on the new DRIVER screen: hats, hair, faces, skin, shirts, pants, shoes and things to hold.",
+                    "Every car has its own emote. Tap the new EMOTE button and let everybody know.",
+                    "Bots taunt you too, especially right after they knock you off.",
+                    "The results screen shows your driver next to the car. Tap the emote buttons to celebrate (or sulk).",
+                    "14 victory emotes to unlock, with Head Spin, Backflip, The Worm and Confetti for Rims.",
+                    "New in the Rims shop: premium outfits and victory emotes.",
+                    "New power-up NITRO: 5 seconds of extra speed.",
+                    "Every bot now has its own skill and its own upgrades. Some are geniuses, some are not.",
+                    "New achievements for dressing up, emoting and power-ups.",
+                    "Steering no longer turns the wrong way when you get pushed backwards. RESUME is now on the right.",
+            },
             {
                     "Power-ups on the map: Snowball, Ice Block, Super Jump, Sticky Wheels and Super Bump.",
                     "Grab one and fire it with the new POWER button above BRAKE. You can carry one at a time.",

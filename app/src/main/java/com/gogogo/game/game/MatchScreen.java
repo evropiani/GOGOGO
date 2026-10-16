@@ -8,9 +8,10 @@ import com.gogogo.game.engine.UIBatch;
 /** The actual game (landscape): HUD, steering/pedal buttons, camera modes, spectating, pause. */
 public final class MatchScreen extends Screen {
     private static final int OWNER_CTRL = 2;
-    private static final int C_LEFT = 0, C_RIGHT = 1, C_BRAKE = 2, C_GAS = 3, C_BOOST = 4, C_POWER = 5, CONTROLS = 6;
-    /** Radius of the power-up button (above BRAKE). */
-    private static final float POWER_R = 58f;
+    private static final int C_LEFT = 0, C_RIGHT = 1, C_BRAKE = 2, C_GAS = 3, C_BOOST = 4, C_POWER = 5, C_EMOTE = 6,
+            CONTROLS = 7;
+    /** Radius of the power-up button (above BRAKE) and of the emote button (above the steering arrows). */
+    private static final float POWER_R = 58f, EMOTE_R = 50f;
     public static final String[] CAM_NAME = {"NEAR", "FAR", "HOOD"};
 
     private final Match match;
@@ -40,6 +41,7 @@ public final class MatchScreen extends Screen {
     private float deadT = -1f;   // time since player eliminated
     private boolean spectating;
     private int specIndex = -1;
+    private String nemesis;       // "BONKED BY ..." when someone knocked the player off (null = fell on their own)
     private float overT = -1f;
     private boolean skipping;
     private float bannerPop;
@@ -50,8 +52,12 @@ public final class MatchScreen extends Screen {
     private float hintT;
     private boolean usedGas;
     private float powerPop;    // power button bounce after a pickup
+    private float emotePop;    // emote button bounce when the emote starts
     private float powerHintT;  // "TAP!" over the power button (first matches)
     private int devPower;      // next power-up the developer button hands out
+    private int roarStream;    // the nitro roar while the player burns one (0 = none)
+    private float roarT;
+    private boolean roarResume; // the roar was cut by a pause: start it again after
 
     private static final String[] SAFE_WORDS = {"SAFE!", "PHEW!", "NICE!", "CLUTCH!", "COZY!"};
     /** Start light colors: red, yellow, green. */
@@ -153,6 +159,13 @@ public final class MatchScreen extends Screen {
                 }
                 break;
             }
+            case Match.EV_BONK:
+                if (b == match.player) {
+                    // knocked off by someone: say who, and the camera goes over to them
+                    nemesis = (b.lastHitPower == PowerUps.NITRO ? "TORCHED BY " : "BONKED BY ") + a.name.toUpperCase();
+                    specIndex = a.index;
+                }
+                break;
             case Match.EV_ELIM:
                 if (a == match.player) {
                     deadT = 0;
@@ -185,8 +198,18 @@ public final class MatchScreen extends Screen {
                     if (game.save.matches < 5) powerHintT = 2.5f;
                 }
                 break;
+            case Match.EV_EMOTE:
+                if (a == match.player) emotePop = 1f;
+                break;
             case Match.EV_POWER:
-                if (a == match.player) powerHintT = 0f;
+                if (a == match.player) {
+                    powerHintT = 0f;
+                    if (v == PowerUps.NITRO) {
+                        stopRoar();
+                        roarStream = s.start(Sfx.NITRO_ROAR, 0.6f, 1f);
+                        roarT = 0f;
+                    }
+                }
                 break;
             default:
                 break;
@@ -220,9 +243,11 @@ public final class MatchScreen extends Screen {
         cy[C_BRAKE] = bottom - 105;
         cx[C_BOOST] = W - right - 100;
         cy[C_BOOST] = bottom - 350;
-        // power-ups: right above BRAKE
+        // power-ups: right above BRAKE; the emote button above the steering arrows, at the outer edge
         cx[C_POWER] = cx[C_BRAKE];
         cy[C_POWER] = cy[C_BRAKE] - 75 - 22 - POWER_R;
+        cx[C_EMOTE] = left + 72;
+        cy[C_EMOTE] = cy[C_LEFT] - 75 - 32 - EMOTE_R;
         if (game.save.leftHanded) {
             for (int i = 0; i < CONTROLS; i++) cx[i] = W - cx[i];
             // keep left/right arrows in screen order
@@ -237,10 +262,10 @@ public final class MatchScreen extends Screen {
         int best = -1;
         float bd = 150f * 150f;
         for (int i = 0; i < CONTROLS; i++) {
-            if (i == C_POWER && !powerShown()) continue;
+            if ((i == C_POWER || i == C_EMOTE) && !powerShown()) continue;
             float dx = x - cx[i], dy = y - cy[i];
             float d = dx * dx + dy * dy;
-            if (i == C_BOOST || i == C_POWER) d *= 1.4f; // smaller targets than the pedals
+            if (i == C_BOOST || i == C_POWER || i == C_EMOTE) d *= 1.4f; // smaller targets than the pedals
             if (d < bd) {
                 bd = d;
                 best = i;
@@ -273,6 +298,10 @@ public final class MatchScreen extends Screen {
                 p.wantPower = true;
                 game.vibrate(15);
             }
+            if (c == C_EMOTE && ptr.justDown && p.emoteCd <= 0 && p.frozenT <= 0) {
+                p.wantEmote = true;
+                game.vibrate(10);
+            }
         }
     }
 
@@ -297,9 +326,30 @@ public final class MatchScreen extends Screen {
 
     private float frameDt = 1f / 60f;
 
+    private void stopRoar() {
+        if (roarStream == 0) return;
+        game.sfx.stop(roarStream);
+        roarStream = 0;
+    }
+
     public void update(float dt) {
         frameDt = dt;
-        if (paused) return;
+        if (paused) {
+            if (roarStream != 0) {
+                stopRoar();
+                roarResume = true;
+            }
+            return;
+        }
+        if (roarResume) {
+            // back from the pause menu with the nitro still burning: the roar picks up again (cut when it ends)
+            roarResume = false;
+            Car pl = match.player;
+            if (pl != null && pl.nitroT > 0.5f) {
+                roarStream = game.sfx.start(Sfx.NITRO_ROAR, 0.6f, 1f);
+                roarT = PowerUps.NITRO_TIME - pl.nitroT;
+            }
+        }
         handleControls(dt);
         if (skipping) {
             if (match.fastForward(900)) skipping = false;
@@ -316,9 +366,16 @@ public final class MatchScreen extends Screen {
         if (bannerPop > 0) bannerPop = Math.max(0f, bannerPop - dt * 3f);
         if (duckFlash > 0) duckFlash = Math.max(0f, duckFlash - dt * 0.6f);
         if (powerPop > 0) powerPop = Math.max(0f, powerPop - dt * 3f);
+        if (emotePop > 0) emotePop = Math.max(0f, emotePop - dt * 3f);
         if (powerHintT > 0) powerHintT -= dt;
         if (deadT >= 0) deadT += dt;
         if (overT >= 0) overT += dt;
+        if (roarStream != 0) {
+            // the roar fades out by itself at the end; cut it when the nitro ends early (a fall, an ice block)
+            roarT += dt;
+            Car pl = match.player;
+            if (pl == null || roarT > PowerUps.NITRO_TIME || (pl.nitroT <= 0f && roarT < PowerUps.NITRO_TIME - 0.3f)) stopRoar();
+        }
 
         // alive milestones
         if (match.phase == Match.SHOW && match.round != lastRoundSeen) {
@@ -347,7 +404,9 @@ public final class MatchScreen extends Screen {
     private Car camTarget() {
         Car p = match.player;
         Car t;
-        if (p != null && (p.alive || deadT < 1.8f)) t = p;
+        // after a fall the camera stays on the player's car a moment (less when somebody knocked it off: then it goes
+        // over to them in time to watch them gloat)
+        if (p != null && (p.alive || deadT < (nemesis != null ? NEMESIS_CAM : 1.8f))) t = p;
         else if (match.winner != null) t = match.winner;
         else if (match.tie && p != null && match.tieGroup.contains(p)) t = p;
         else if (specIndex >= 0 && match.cars[specIndex].alive) t = match.cars[specIndex];
@@ -425,6 +484,11 @@ public final class MatchScreen extends Screen {
                 wty = baseY + air * 0.5f;
                 fov = 58f;
             }
+            if (t == match.player && t.nitroT > 0) {
+                // nitro: the view widens, with a kick right as it fires
+                float kick = Math.max(0f, t.nitroT - (PowerUps.NITRO_TIME - 0.35f)) / 0.35f;
+                fov += (7f + 7f * kick) * Math.min(1f, t.nitroT * 2f);
+            }
             if (match.phase == Match.INTRO) {
                 // swoop down from a bird's-eye view behind the car (the car can't turn yet)
                 float k = Ease.inOutSine(Math.min(1f, match.phaseT / (Match.INTRO_TIME * 0.9f)));
@@ -469,6 +533,7 @@ public final class MatchScreen extends Screen {
 
         drawDanger(b, W, H);
         drawFrost(b, W, H);
+        if (!paused) drawSpeedLines(b, W, H);
         view.drawPopups(b);
         if (view.hoodCar == null || view.hoodCar != match.player) drawNameTags(b);
 
@@ -535,7 +600,7 @@ public final class MatchScreen extends Screen {
             b.alpha(1f);
         }
 
-        if (p != null && !p.alive && match.phase != Match.OVER && deadT > 1.5f && !paused) drawEliminated(b, ui, W, H);
+        if (p != null && !p.alive && match.phase != Match.OVER && deadT > panelAt() && !paused) drawEliminated(b, ui, W, H);
         if (skipping) {
             b.rect(0, 0, W, H, 0x80200040);
             b.textShadow(b.title, "FAST FORWARD...", W / 2, H / 2, 70f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 7f, 8f, 0x70200040);
@@ -596,7 +661,10 @@ public final class MatchScreen extends Screen {
         // pedals
         drawPedal(b, C_BRAKE, 140, 150, 0xFFFF4F6A, "BRAKE", 30f);
         drawPedal(b, C_GAS, 150, 220, 0xFF34D058, "GAS", 46f);
-        if (powerShown()) drawPowerButton(b, p);
+        if (powerShown()) {
+            drawPowerButton(b, p);
+            drawEmoteButton(b, p);
+        }
         // boost
         float x = cx[C_BOOST], y = cy[C_BOOST], r = 68f;
         boolean ok = p.boostCd <= 0;
@@ -616,7 +684,7 @@ public final class MatchScreen extends Screen {
     }
 
     private static final String[] DIGITS = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"};
-    private static final String[] DEV_POWER = {"+SNOWBALL", "+ICE", "+JUMP", "+STICKY", "+S.BUMP"};
+    private static final String[] DEV_POWER = {"+SNOWBALL", "+ICE", "+JUMP", "+STICKY", "+S.BUMP", "+NITRO"};
 
     /** The power button waits until the first-match hint over the controls has gone. */
     private boolean powerShown() {
@@ -629,17 +697,22 @@ public final class MatchScreen extends Screen {
         float pr = press[C_POWER] * 8f;
         int type = p.power;
         if (type < 0) {
-            // empty: a dim slot (sticky wheels that are running drain around it)
+            // empty: a dim slot (nitro or sticky wheels that are running drain around it)
             b.circle(x, y + 8, r, 0x40200040);
             b.shape(x, y, r * 2, r * 2, r, 0x70302A48, 0x70FFFFFF, 4f, 0, 0, 0);
-            if (p.stickyT > 0) {
-                float k = p.stickyT / PowerUps.STICKY_TIME;
+            boolean nitro = p.nitroT > 0;
+            if (nitro || p.stickyT > 0) {
+                float left = nitro ? p.nitroT : p.stickyT;
+                float k = left / (nitro ? PowerUps.NITRO_TIME : PowerUps.STICKY_TIME);
+                int fill = nitro ? 0xFF000000 | PowerUps.COLOR[PowerUps.NITRO] : 0xFF000000 | CarRenderer.STICKY_GOO;
                 float fh = (r * 2 - 12) * k;
                 b.clip(x - r, y + r - 6 - fh, r * 2, fh);
-                b.shape(x, y, r * 2 - 12, r * 2 - 12, r - 6, UIBatch.withAlpha(0xFF000000 | CarRenderer.STICKY_GOO, 0.55f), 0, 0, 0, 0, 0);
+                b.shape(x, y, r * 2 - 12, r * 2 - 12, r - 6, UIBatch.withAlpha(fill, 0.55f), 0, 0, 0, 0, 0);
                 b.unclip();
-                drawPowerIcon(b, PowerUps.STICKY, x, y - r * 0.16f, r * 0.36f);
-                b.text(b.title, DIGITS[Math.min(9, (int) Math.ceil(p.stickyT))], x, y + r * 0.5f, 24f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 4f);
+                // the nitro icon shivers while it burns
+                float jx = nitro ? (float) Math.sin(game.time * 53f) * 1.5f : 0f;
+                drawPowerIcon(b, nitro ? PowerUps.NITRO : PowerUps.STICKY, x + jx, y - r * 0.16f, r * 0.36f);
+                b.text(b.title, DIGITS[Math.min(9, (int) Math.ceil(left))], x, y + r * 0.5f, 24f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 4f);
             } else {
                 b.text(b.title, "POWER", x, y + 2, 24f, 0x90FFFFFF, UIBatch.CENTER, 0, 0);
             }
@@ -667,6 +740,50 @@ public final class MatchScreen extends Screen {
             b.alpha(a);
             b.textShadow(b.title, "TAP!", x, y - rr - 26, 34f, 0xFFFFE14D, UIBatch.CENTER, 0xFF2A1840, 5f, 4f, 0x60200040);
             b.alpha(1f);
+        }
+    }
+
+    /** Round EMOTE button over the steering arrows: a cheeky face, with a ring filling up while it cools down. */
+    private void drawEmoteButton(UIBatch b, Car p) {
+        float x = cx[C_EMOTE], y = cy[C_EMOTE], r = EMOTE_R;
+        float pr = press[C_EMOTE] * 8f;
+        boolean ready = p.emoteCd <= 0 && p.frozenT <= 0;
+        int col = ready ? 0xFF2EBFB0 : 0xFF8A9CA8;
+        float rr = r * (1f + (ready ? 0.03f * (float) Math.sin(game.time * 5f) : 0f) + emotePop * 0.18f);
+        b.shadow(x - rr, y - rr + 12, rr * 2, rr * 2, rr, 0x50200040, 10);
+        b.circle(x, y + 9, rr, UI.shade(col, 0.6f));
+        b.shape(x, y + pr, rr * 2, rr * 2, rr, col, 0xFFFFFFFF, 5f, 0.5f, 0, 0);
+        drawEmoteIcon(b, x, y + pr - rr * 0.14f, rr * 0.4f, ready ? 1f : 0.55f);
+        b.text(b.title, "EMOTE", x, y + pr + rr * 0.58f, 19f, ready ? 0xFFFFFFFF : 0xC0FFFFFF, UIBatch.CENTER, 0xFF2A1840, 3.5f);
+        if (!ready && p.frozenT <= 0) {
+            // cooling down: a ring fills up around the button
+            float k = 1f - Math.max(0f, p.emoteCd) / Match.EMOTE_CD;
+            ring(b, x, y + pr, rr + 9f, 1f, 7f, 0x60200040);
+            ring(b, x, y + pr, rr + 9f, k, 7f, 0xFFFFE14D);
+        }
+    }
+
+    /** A cheeky face (winking, tongue out), r = about its radius; dim (0..1) fades it. */
+    static void drawEmoteIcon(UIBatch b, float cx, float cy, float r, float dim) {
+        int ink = 0xFF2A1840;
+        b.alpha(b.alpha() * dim);
+        b.circle(cx, cy, r * 1.08f, ink);
+        b.circle(cx, cy, r, 0xFFFFE14D);
+        b.circle(cx - r * 0.36f, cy - r * 0.22f, r * 0.15f, ink);
+        b.line(cx + r * 0.18f, cy - r * 0.22f, cx + r * 0.52f, cy - r * 0.24f, r * 0.14f, ink);
+        b.line(cx - r * 0.45f, cy + r * 0.24f, cx + r * 0.45f, cy + r * 0.24f, r * 0.13f, ink);
+        b.shape(cx + r * 0.12f, cy + r * 0.48f, r * 0.42f, r * 0.5f, r * 0.21f, 0xFFFF5A8A, ink, r * 0.08f, 0f, 0, 0);
+        b.alpha(b.alpha() / dim);
+    }
+
+    /** A ring around (x, y): k = how much of it, clockwise from the top. */
+    static void ring(UIBatch b, float x, float y, float r, float k, float thick, int color) {
+        int n = 40, m = (int) Math.ceil(n * Math.min(1f, k));
+        float a0 = -(float) Math.PI / 2f;
+        for (int i = 0; i < m; i++) {
+            float a = a0 + i * 6.2832f / n, a1 = a0 + Math.min(k, (i + 1) / (float) n) * 6.2832f;
+            b.line(x + (float) Math.cos(a) * r, y + (float) Math.sin(a) * r, x + (float) Math.cos(a1) * r, y + (float) Math.sin(a1) * r,
+                    thick, color);
         }
     }
 
@@ -713,6 +830,16 @@ public final class MatchScreen extends Screen {
                 }
                 b.circle(cx - s * 0.26f, cy + s * 0.2f, s * 0.16f, 0xFFFFFFFF);
                 break;
+            case PowerUps.NITRO:
+                // a flame: red outside, then orange, then a yellow core (each a drop pointing up)
+                for (int i = 0; i < 4; i++) {
+                    float k = i == 0 ? 1.12f : (i == 1 ? 1f : (i == 2 ? 0.7f : 0.42f));
+                    int c = i == 0 ? ink : (i == 1 ? 0xFFFF3A4A : (i == 2 ? 0xFFFF9A2B : 0xFFFFE96A));
+                    float yy = cy + s * 0.3f * (1f - k) + s * 0.08f;
+                    b.shape(cx, yy - s * 0.3f * k, s * 1.05f * k, s * 1.05f * k, s * 0.1f * k, c, 0, 0, 0, 0, (float) Math.PI / 4);
+                    b.circle(cx, yy + s * 0.12f * k, s * 0.74f * k, c);
+                }
+                break;
             default:
                 // super bump: a burst
                 for (int i = 0; i < 2; i++) {
@@ -725,6 +852,31 @@ public final class MatchScreen extends Screen {
                 b.circle(cx, cy, s * 0.42f, 0xFFFFFFFF);
                 break;
         }
+    }
+
+    /** Speed lines rushing in from the screen edges while the player burns nitro. */
+    private void drawSpeedLines(UIBatch b, float W, float H) {
+        Car p = match.player;
+        if (p == null || !p.alive || p.nitroT <= 0 || camTarget() != p) return;
+        float sp = p.speed();
+        if (sp < 8f) return;
+        float k = Math.min(1f, p.nitroT * 2f) * Math.min(1f, (sp - 8f) / 10f);
+        int frame = (int) (game.time * 20f); // a new set of lines 20 times a second
+        float cx = W / 2, cy = H * 0.46f, rx = W * 0.56f, ry = H * 0.62f;
+        for (int i = 0; i < 18; i++) {
+            float h = hash(frame * 31 + i * 7), h2 = hash(frame * 17 + i * 13);
+            float a = (i + h) / 18f * 6.2832f;
+            float ca = (float) Math.cos(a), sa = (float) Math.sin(a);
+            float r0 = 0.72f + 0.2f * h2;
+            b.line(cx + ca * rx * r0, cy + sa * ry * r0, cx + ca * rx * 1.1f, cy + sa * ry * 1.1f, 3f + 5f * h,
+                    UIBatch.withAlpha(0xFFFFFFFF, 0.4f * k));
+        }
+    }
+
+    /** 0..1 noise from an integer. */
+    private static float hash(int n) {
+        n = (n << 13) ^ n;
+        return ((n * (n * n * 15731 + 789221) + 1376312589) & 0x7fffffff) / 2147483647f;
     }
 
     /** Frosty screen edges while the player is frozen. */
@@ -893,7 +1045,7 @@ public final class MatchScreen extends Screen {
                 }
             }
             tagged[k] = best;
-            if (best == null || !game.cam.project(best.x, best.y + best.def.topY + 1.0f, best.z, pr)) continue;
+            if (best == null || !game.cam.project(best.x, best.y + best.def.topmost() + 0.1f, best.z, pr)) continue;
             b.alpha(0.75f);
             b.text(b.body, best.name, pr[0] / b.scale, pr[1] / b.scale, 22f, 0xFFFFFFFF, UIBatch.CENTER, 0xFF2A1840, 3f);
             b.alpha(1f);
@@ -906,27 +1058,45 @@ public final class MatchScreen extends Screen {
 
     private void drawEliminated(UIBatch b, UI ui, float W, float H) {
         Car p = match.player;
-        float k = Ease.outBack(Math.min(1f, (deadT - 1.5f) * 3f));
+        float k = Ease.outBack(Math.min(1f, (deadT - panelAt()) * 3f));
         if (!spectating) {
-            float pw = 640, ph = 380;
+            // (a line more when somebody knocked the player off)
+            float extra = nemesis != null ? 44 : 0;
+            float pw = 640, ph = 380 + extra;
             float px = W / 2 - pw / 2, py = H * 0.5f - ph / 2 + 30 + (1 - k) * 300;
-            b.alpha(Math.min(1f, (deadT - 1.5f) * 3f));
+            b.alpha(Math.min(1f, (deadT - panelAt()) * 3f));
             ui.panel(px, py, pw, ph, 0xFFFFFFFF);
             b.text(b.title, "ELIMINATED!", W / 2, py + 62, 62f, 0xFFFF4FA3, UIBatch.CENTER, 0xFF2A1840, 6f);
             b.text(b.title, "#" + p.place, W / 2, py + 148, 100f, 0xFF2A1840, UIBatch.CENTER, 0, 0);
             b.text(b.body, "of " + match.total + "  -  survived " + p.roundsSurvived + " rounds", W / 2, py + 218, 30f, 0xFF7A6A90, UIBatch.CENTER, 0, 0);
+            if (nemesis != null) b.textFit(b.title, nemesis, W / 2, py + 262, 32f, pw - 60, 0xFFFF6A3A, UIBatch.CENTER, 0, 0);
             b.alpha(1f);
-            if (ui.button("spectate", px + 30, py + 255, 280, 100, 0xFF3BA8FF, "WATCH", 46f)) spectating = true;
-            if (ui.button("continue", px + 330, py + 255, 280, 100, 0xFF34D058, "NEXT", 46f)) finish(true);
+            if (ui.button("spectate", px + 30, py + 255 + extra, 280, 100, 0xFF3BA8FF, "WATCH", 46f)) spectating = true;
+            if (ui.button("continue", px + 330, py + 255 + extra, 280, 100, 0xFF34D058, "NEXT", 46f)) finish(true);
         } else {
             Car t = camTarget();
             float bw = 780, y = H - game.safeBottom - 70;
             b.shadow(W / 2 - bw / 2, y - 45 + 8, bw, 90, 45, 0x50200040, 10);
             b.shape(W / 2, y, bw, 90, 45, 0xFF2A1840, 0, 0, 0, 0, 0);
-            b.textFit(b.body, "WATCHING " + (t == null ? "" : t.name.toUpperCase()), W / 2 - 120, y + 2, 32f, 460, 0xFFFFFFFF, UIBatch.CENTER, 0, 0);
+            String who = "WATCHING " + (t == null ? "" : t.name.toUpperCase());
+            if (t != null && t.bot != null && t != match.player) {
+                // a bot: how good it is under its name
+                b.textFit(b.body, who, W / 2 - 120, y - 14, 30f, 460, 0xFFFFFFFF, UIBatch.CENTER, 0, 0);
+                b.text(b.title, t.bot.rank(), W / 2 - 120, y + 23, 25f, t.bot.rankColor(), UIBatch.CENTER, 0, 0);
+            } else {
+                b.textFit(b.body, who, W / 2 - 120, y + 2, 32f, 460, 0xFFFFFFFF, UIBatch.CENTER, 0, 0);
+            }
             if (ui.button("nextcar", W / 2 + bw / 2 - 270, y - 36, 120, 72, 0xFF8E62FF, ">", 46f)) nextSpectate();
             if (ui.button("skip", W / 2 + bw / 2 - 140, y - 36, 120, 72, 0xFFFF9A2B, "SKIP", 32f)) skipping = true;
         }
+    }
+
+    /** Seconds after the camera leaves the player's falling car for whoever knocked it off. */
+    private static final float NEMESIS_CAM = 0.9f;
+
+    /** When the ELIMINATED panel comes up: later when the car that knocked the player off is busy gloating. */
+    private float panelAt() {
+        return nemesis != null ? 3f : 1.5f;
     }
 
     private void nextSpectate() {
@@ -948,8 +1118,8 @@ public final class MatchScreen extends Screen {
         float px = W / 2 - pw / 2, py = H / 2 - ph / 2;
         ui.panel(px, py, pw, ph, 0xFFFFFFFF);
         b.text(b.title, "PAUSED", W / 2, py + 64, 72f, 0xFF8E62FF, UIBatch.CENTER, 0xFF2A1840, 6f);
-        if (ui.button("resume", px + 40, py + 130, 330, 120, 0xFF34D058, "RESUME", 56f)) paused = false;
-        if (ui.button("quit", px + 390, py + 130, 330, 120, 0xFFFF4FA3, "GIVE UP", 50f)) {
+        if (ui.button("resume", px + 390, py + 130, 330, 120, 0xFF34D058, "RESUME", 56f)) paused = false;
+        if (ui.button("quit", px + 40, py + 130, 330, 120, 0xFFFF4FA3, "GIVE UP", 50f)) {
             paused = false;
             finish(true);
         }
@@ -990,6 +1160,7 @@ public final class MatchScreen extends Screen {
     private void finish(boolean early) {
         if (finished) return;
         finished = true;
+        stopRoar();
         resultsShown = true;
         Car p = match.player;
         if (p != null && p.alive && match.phase != Match.OVER) {
@@ -1014,6 +1185,11 @@ public final class MatchScreen extends Screen {
 
     public void pause() {
         if (match.phase != Match.OVER) paused = true;
+        // the app went away: no roaring on in the background
+        if (roarStream != 0) {
+            stopRoar();
+            roarResume = paused;
+        }
     }
 
     // ------------------------------------------------------------------ small icons

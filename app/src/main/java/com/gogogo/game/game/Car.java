@@ -61,8 +61,8 @@ public final class Car {
     public int power = -1;
     /** Set to use the held power-up this step (like wantBoost). */
     public boolean wantPower;
-    /** Seconds left: frozen in an ice block, on sticky wheels, sliding after a power-up hit. */
-    public float frozenT, stickyT, slipT;
+    /** Seconds left: frozen in an ice block, on sticky wheels, sliding after a power-up hit, burning nitro. */
+    public float frozenT, stickyT, slipT, nitroT;
     /** In the air after a super jump (no floor check until it comes down). */
     public boolean airborne;
     public float airT;
@@ -71,8 +71,27 @@ public final class Car {
     public float landSpeed;
     /** Power-up that gave the last hit (lastHitBy), -1 = a plain bump. */
     public int lastHitPower = -1;
-    /** Power-ups picked up and used, and falls saved by a super jump, this match. */
-    public int pickups, powersUsed, rescues;
+    /** Power-ups picked up and used, falls saved by a super jump, and nitros fired, this match. */
+    public int pickups, powersUsed, rescues, nitros;
+    /** Cars knocked off by ramming them while burning nitro, this match. */
+    public int nitroBonks;
+
+    /** Who drives it (look and ragdoll pose; stepped along with the car). */
+    public final Driver driver = new Driver();
+
+    // emotes (see Match.emote)
+    /** Seconds until it may emote again. */
+    public float emoteCd;
+    /** Set to play its emote this step (the EMOTE button, like wantBoost). */
+    public boolean wantEmote;
+    /** A taunt queued up for a bot: seconds until it plays (0 = none). */
+    public float tauntIn;
+    /** Emotes played this match, and how many of them came right after knocking a car off. */
+    public int emotes, gloats;
+    /** Match time of its last knock-off. */
+    public float lastBonkTime = -10f;
+    /** Reached the target color in the last moment this round (a close call worth a taunt). */
+    public boolean late;
 
     public Car(int index, CarDef def, String name, boolean isPlayer, int[] lv) {
         this.index = index;
@@ -92,6 +111,8 @@ public final class Car {
         mass = 0.9f + we * 0.18f;
         manualTurn = 2.3f + gr * 0.22f;
         radius = 1.08f;
+        driver.style = def.seatStyle;
+        driver.spread = def.seatSpread;
     }
 
     public void setLook(int paint, int accent, int topper, int wheel) {
@@ -112,6 +133,7 @@ public final class Car {
         if (falling) {
             justBoosted = false;
             wantBoost = false;
+            nitroT = 0f; // a fall puts the fire out (this also catches coming down from a super jump over nothing)
             fallT += dt;
             vy -= Arena.GRAVITY * dt;
             y += vy * dt;
@@ -121,11 +143,14 @@ public final class Car {
             vz *= (float) Math.exp(-0.6f * dt);
             rotX += spinX * dt;
             rotZ += spinZ * dt;
+            if (driver.flung) driver.tumble(dt);
+            else driver.ride(this, dt, 0f, 0f);
             return false;
         }
 
         if (stickyT > 0) stickyT = Math.max(0f, stickyT - dt);
         if (slipT > 0) slipT = Math.max(0f, slipT - dt);
+        if (nitroT > 0) nitroT = Math.max(0f, nitroT - dt);
         if (frozenT > 0) {
             frozenT -= dt;
             if (frozenT <= 0) {
@@ -148,7 +173,8 @@ public final class Car {
             float st = canDrive ? Math.max(-1f, Math.min(1f, steer)) : 0f;
             float th = canDrive ? Math.max(-1f, Math.min(1f, throttle)) : 0f;
             float fwd0 = vx * fx + vz * fz;
-            float dir = fwd0 < -0.3f ? -1f : 1f;
+            // steering only flips while really reversing; a car pushed backwards still turns the way you press
+            float dir = th < 0 && fwd0 < -0.3f ? -1f : 1f;
             float rate = manualTurn * Math.min(1f, 0.35f + Math.abs(fwd0) / 6f);
             // steering right turns clockwise seen from above (yaw decreases)
             yawRate = -st * rate * dir;
@@ -174,8 +200,10 @@ public final class Car {
         }
         steerVis = Ease.approach(steerVis, Math.max(-0.5f, Math.min(0.5f, yawRate * 0.12f)), 12f, dt);
 
-        // throttle
-        float ax = fx * accel * thr, az = fz * accel * thr;
+        // throttle (nitro pushes harder)
+        boolean nitro = nitroT > 0;
+        float push = nitro ? accel * PowerUps.NITRO_ACCEL : accel;
+        float ax = fx * push * thr, az = fz * push * thr;
         if (reversing) {
             ax = -fx * accel * 0.55f;
             az = -fz * accel * 0.55f;
@@ -214,7 +242,8 @@ public final class Car {
         vx = fx * fwd + latx;
         vz = fz * fwd + latz;
 
-        float cap = maxSpeed * (boostT > 0 ? 1.65f : 1f);
+        // nitro raises the top speed; a BUMP on top of it adds a bit less than usual
+        float cap = maxSpeed * (nitro ? PowerUps.NITRO_SPEED : 1f) * (boostT > 0 ? (nitro ? PowerUps.NITRO_BUMP_CAP : 1.65f) : 1f);
         float sp = (float) Math.sqrt(vx * vx + vz * vz);
         if (sp > cap) {
             float k = Ease.approach(sp, cap, boostT > 0 ? 2f : 6f, dt) / sp;
@@ -241,6 +270,8 @@ public final class Car {
             topZ += topVZ * dt;
             topX = Math.max(-0.7f, Math.min(0.7f, topX));
             topZ = Math.max(-0.7f, Math.min(0.7f, topZ));
+            driverFwd = aFwd;
+            driverSide = aSide;
         }
 
         // squash spring + hop
@@ -256,9 +287,15 @@ public final class Car {
             }
         }
         if (flash > 0) flash = Math.max(0f, flash - dt * 4f);
+        // the driver rides along (a frozen one is stuck in the ice), the car joins in its emote
+        if (!frozen) {
+            driver.ride(this, dt, driverFwd, driverSide);
+            if (driver.emote >= 0) Emotes.car(this, dt);
+        }
 
         if (!god && !arena.supported(x, z)) {
             falling = true;
+            nitroT = 0f;
             vy = Math.min(0f, vy);
             spinX = (float) (Math.random() * 6 - 3) + fwd * 0.2f;
             spinZ = (float) (Math.random() * 6 - 3);
@@ -274,8 +311,22 @@ public final class Car {
 
     public boolean justBoosted;
     private float lastVx, lastVz;
+    /** This step's acceleration along the car and to its left (shoves the driver around). */
+    private float driverFwd, driverSide;
 
     // ------------------------------------------------------------------ power-up effects
+
+    /** A knock from (fromX, fromZ) (a world direction, any length) shakes the driver up. */
+    public void jolt(float strength, float fromX, float fromZ) {
+        float l = (float) Math.sqrt(fromX * fromX + fromZ * fromZ);
+        float fx = (float) Math.sin(yaw), fz = (float) Math.cos(yaw);
+        float dx = 0f, dz = 0f;
+        if (l > 1e-4f) {
+            dx = (fromX * fz - fromZ * fx) / l;
+            dz = (fromX * fx + fromZ * fz) / l;
+        }
+        driver.jolt(strength, dx, dz);
+    }
 
     /** Super jump: up into a long floaty arc. Also works in the first moments of a fall (cancels it). */
     public void superJump() {
@@ -304,6 +355,16 @@ public final class Car {
         boostT = 0f;
         wantBoost = false;
         stickyT = 0f;
+        nitroT = 0f;
+        driver.startle();
+    }
+
+    /** Nitro: a kick forward, then a higher top speed and quicker acceleration for a while. */
+    public void nitro() {
+        nitroT = PowerUps.NITRO_TIME;
+        vx += (float) Math.sin(yaw) * PowerUps.NITRO_KICK;
+        vz += (float) Math.cos(yaw) * PowerUps.NITRO_KICK;
+        squashV -= 7f;
     }
 
     /** One step in the air: limited air control, a floaty arc, landing or falling at the bottom of it. */
@@ -366,6 +427,7 @@ public final class Car {
         wantBoost = false;
         justBoosted = false;
 
+        boolean fell = false;
         if (y <= 0f && vy < 0f) {
             airborne = false;
             if (god || arena.supported(x, z)) {
@@ -375,15 +437,16 @@ public final class Car {
                 rotX = rotZ = 0f;
                 squashV -= Math.min(16f, landSpeed * 0.8f);
                 justLanded = true;
-                return false;
+            } else {
+                // nothing underneath: down it goes
+                falling = true;
+                fallT = 0f;
+                spinX = (float) (Math.random() * 6 - 3);
+                spinZ = (float) (Math.random() * 6 - 3);
+                fell = true;
             }
-            // nothing underneath: down it goes
-            falling = true;
-            fallT = 0f;
-            spinX = (float) (Math.random() * 6 - 3);
-            spinZ = (float) (Math.random() * 6 - 3);
-            return true;
         }
-        return false;
+        if (frozenT <= 0) driver.ride(this, dt, 0f, 0f);
+        return fell;
     }
 }

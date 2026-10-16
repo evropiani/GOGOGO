@@ -22,7 +22,8 @@ public final class Cars {
                     m.fixed(LIGHT).sphere(0.5f, 0.86f, 1.1f, 0.14f, 10);
                     eyes(m, 0.25f, 1.4f, 0.5f, 0.17f);
                 }
-            }.wheels(0.42f, 0.34f, 0.78f, 0.74f, -0.74f).topper(1.64f, -0.15f),
+            }.wheels(0.42f, 0.34f, 0.78f, 0.74f, -0.74f)
+                    .hatch(1.65f, -0.1f, 1f).topper(0f, 1.12f, -0.97f, 0.8f),
 
             new CarDef(1, "ZOOMBA", "Low, light and allergic to brakes.", 600, 4f, 3f, 2.5f, 1f, 2, 6) {
                 public void build(MeshBuilder m) {
@@ -36,7 +37,8 @@ public final class Cars {
                     m.fixed(0x555566).cylinder(-0.45f, 0.5f, -1.4f, 0.1f, -0.1f, 0.1f, 0.03f, 8);
                     eyes(m, 0.3f, 0.78f, 1.48f, 0.14f);
                 }
-            }.wheels(0.4f, 0.42f, 0.86f, 0.92f, -0.86f).topper(1.24f, -0.15f),
+            }.wheels(0.4f, 0.42f, 0.86f, 0.92f, -0.86f)
+                    .hatch(1.25f, -0.15f, 0.95f).topper(0f, 1.31f, -1.28f, 0.65f),
 
             new CarDef(2, "TACO TRUCK", "Heavy. Spicy. Smells amazing.", 900, 2f, 2f, 2.5f, 5f, 4, 1) {
                 public void build(MeshBuilder m) {
@@ -58,7 +60,8 @@ public final class Cars {
                     m.pop();
                     eyes(m, 0.36f, 1.64f, 1.18f, 0.17f);
                 }
-            }.wheels(0.48f, 0.4f, 0.86f, 0.95f, -0.85f).topper(1.58f, 0.86f).hood(2.1f, 0.55f),
+            }.wheels(0.48f, 0.4f, 0.86f, 0.95f, -0.85f).hood(2.1f, 0.55f)
+                    .seat(CarDef.SADDLE, 2.93f, -0.45f, 1f).spread(0.3f).topper(1.58f, 0.86f),
 
             new CarDef(3, "HOT DOG", "Grips like mustard on a shirt.", 1300, 3f, 4.5f, 3f, 2f, 6, 1) {
                 public void build(MeshBuilder m) {
@@ -74,7 +77,8 @@ public final class Cars {
                     }
                     eyes(m, 0.17f, 1.2f, 1.58f, 0.14f);
                 }
-            }.wheels(0.38f, 0.34f, 0.78f, 0.98f, -0.98f).topper(1.48f, 0.25f),
+            }.wheels(0.38f, 0.34f, 0.78f, 0.98f, -0.98f)
+                    .seat(CarDef.SADDLE, 1.56f, -0.2f, 0.95f).spread(0.8f).topper(0f, 1.38f, -1.0f, 0.85f),
 
             new CarDef(4, "ICE SCREAM", "Brain freeze on wheels.", 1800, 3f, 3f, 3.5f, 3f, 8, 0) {
                 public void build(MeshBuilder m) {
@@ -89,7 +93,8 @@ public final class Cars {
                     m.fixed(0xFF2244).sphere(0, 3.3f, -0.35f, 0.15f, 10);
                     eyes(m, 0.34f, 1.68f, 1.2f, 0.16f);
                 }
-            }.wheels(0.42f, 0.36f, 0.82f, 0.95f, -0.9f).topper(1.78f, 0.78f).hood(2.1f, 0.6f),
+            }.wheels(0.42f, 0.36f, 0.82f, 0.95f, -0.9f).hood(2.1f, 0.6f)
+                    .sunk(CarDef.SUNK, 3.1f, -0.35f, 0.85f, 0.05f).topper(0f, 1.77f, -1.0f, 0.85f),
 
             new CarDef(5, "MONSTER CUBE", "Big wheels. Bigger attitude.", 2500, 3f, 2.5f, 3f, 4.5f, 3, 9) {
                 public void build(MeshBuilder m) {
@@ -101,11 +106,12 @@ public final class Cars {
                     m.paint(1f).box(0, 1.58f, 0, 1.62f, 1.1f, 2.0f, 0.3f);
                     m.fixed(0x2A1A30).box(0, 1.34f, 1.0f, 0.95f, 0.22f, 0.06f, 0.1f);
                     for (int i = 0; i < 4; i++) m.fixed(0xFFFFFF).box(-0.3f + i * 0.2f, 1.4f, 1.02f, 0.14f, 0.1f, 0.06f, 0.03f);
-                    m.accent(1f).box(0, 2.18f, 0.2f, 1.3f, 0.1f, 0.12f, 0.05f);
-                    for (int i = -1; i <= 1; i++) m.fixed(0xFFF080).box(i * 0.42f, 2.26f, 0.2f, 0.24f, 0.18f, 0.14f, 0.05f);
+                    m.accent(1f).box(0, 2.18f, 0.72f, 1.3f, 0.1f, 0.12f, 0.05f);
+                    for (int i = -1; i <= 1; i++) m.fixed(0xFFF080).box(i * 0.42f, 2.26f, 0.72f, 0.24f, 0.18f, 0.14f, 0.05f);
                     eyes(m, 0.38f, 1.86f, 1.0f, 0.22f);
                 }
-            }.wheels(0.72f, 0.56f, 0.98f, 0.86f, -0.86f).topper(2.13f, -0.35f),
+            }.wheels(0.72f, 0.56f, 0.98f, 0.86f, -0.86f)
+                    .hatch(2.13f, 0f, 1.05f).topper(0f, 2.13f, -0.72f, 0.75f),
 
             new CarDef(6, "ROCKET TOASTER", "Pops up. Blasts off. Burns toast.", 3200, 4f, 3f, 5f, 2f, 8, 6) {
                 public void build(MeshBuilder m) {
@@ -124,7 +130,8 @@ public final class Cars {
                     m.accent(1f).box(0, 1.9f, -0.8f, 0.12f, 0.5f, 0.55f, 0.05f);
                     eyes(m, 0.36f, 1.28f, 1.06f, 0.19f);
                 }
-            }.wheels(0.4f, 0.34f, 0.8f, 0.82f, -0.82f).topper(1.8f, 0.82f),
+            }.wheels(0.4f, 0.34f, 0.8f, 0.82f, -0.82f)
+                    .sunk(CarDef.SUNK, 1.8f, 0f, 0.8f, 0.35f).topper(0f, 1.69f, 0.92f, 0.6f).topTilt(0.6f),
 
             new CarDef(7, "BATHTUB BOMBER", "Squeaky clean. Dirty driver.", 4000, 3.5f, 4f, 4f, 3f, 8, 1) {
                 public void build(MeshBuilder m) {
@@ -143,7 +150,8 @@ public final class Cars {
                     }
                     eyes(m, 0.36f, 1.16f, 1.3f, 0.17f);
                 }
-            }.wheels(0.38f, 0.3f, 0.8f, 0.9f, -0.9f).topper(1.85f, 0.45f),
+            }.wheels(0.38f, 0.3f, 0.8f, 0.9f, -0.9f)
+                    .sunk(CarDef.SUNK, 1.49f, 0.15f, 1f, 0.1f).topper(0.42f, 1.48f, -1.02f, 0.8f),
 
             new CarDef(8, "SOFA SO GOOD", "Maximum comfort. Maximum velocity.", 5200, 4.5f, 4f, 4f, 4f, 5, 1) {
                 public void build(MeshBuilder m) {
@@ -159,7 +167,8 @@ public final class Cars {
                     m.fixed(0x2A2A3A).box(-0.3f, 1.27f, 0.5f, 0.14f, 0.06f, 0.36f, 0.03f);
                     eyes(m, 0.42f, 0.8f, 1.2f, 0.15f);
                 }
-            }.wheels(0.36f, 0.3f, 0.86f, 0.92f, -0.92f).topper(2.13f, -0.86f),
+            }.wheels(0.36f, 0.3f, 0.86f, 0.92f, -0.92f)
+                    .seat(CarDef.BENCH, 1.4f, -0.32f, 0.95f).seatX(-0.2f).topper(0.5f, 2.13f, -0.86f, 0.85f),
 
             new CarDef(9, "GOLDEN QUACK", "???", 0, 5f, 5f, 5f, 5f, 16, 4) {
                 public void build(MeshBuilder m) {
@@ -173,7 +182,8 @@ public final class Cars {
                     m.paint(0.92f).ellipsoid(0.9f, 1.18f, -0.1f, 0.18f, 0.42f, 0.78f, 12);
                     eyes(m, 0.26f, 2.2f, 1.06f, 0.15f);
                 }
-            }.wheels(0.4f, 0.34f, 0.8f, 0.85f, -0.85f).topper(2.62f, 0.6f),
+            }.wheels(0.4f, 0.34f, 0.8f, 0.85f, -0.85f).topper(2.62f, 0.6f)
+                    .hatch(1.72f, -0.45f, 1f),
 
             // ---- premium and level-reward cars (moving parts are drawn by CarRenderer, see Art)
             new CarDef(10, "DISCO DASHER", "Groovy moves. Shiny ball. Zero chill.", 0, 4.5f, 4f, 4f, 3.5f, 13, 8) {
@@ -219,7 +229,8 @@ public final class Cars {
                     m.fixed(0xFFD23B).box(0, 1.24f, 0.86f, 0.2f, 0.045f, 0.045f, 0.02f, 1);
                     eyes(m, 0.3f, 1.2f, 0.9f, 0.16f);
                 }
-            }.wheels(0.42f, 0.34f, 0.82f, 0.85f, -0.85f).topper(1.5f, -0.1f).rims(250),
+            }.wheels(0.42f, 0.34f, 0.82f, 0.85f, -0.85f).rims(250)
+                    .sunk(CarDef.HATCH, 1.52f, -0.1f, 0.95f, 0.25f).topper(0f, 1.08f, 0.62f, 0.6f),
 
             new CarDef(11, "BIG CHEESE", "Say cheese! Then say goodbye.", 0, 4f, 4f, 4.5f, 4.5f, 1, 4) {
                 public void build(MeshBuilder m) {
@@ -249,7 +260,8 @@ public final class Cars {
                     for (int i = 0; i < 4; i++) m.fixed(0xFFFFFF).box(-0.24f + i * 0.16f, 0.83f, 1.335f, 0.13f, 0.08f, 0.04f, 0.02f);
                     eyes(m, 0.34f, 1.12f, 1.16f, 0.18f);
                 }
-            }.wheels(0.42f, 0.36f, 0.84f, 0.85f, -0.85f).topper(1.44f, -0.1f).hood(1.82f, 0.1f).level(50),
+            }.wheels(0.42f, 0.36f, 0.84f, 0.85f, -0.85f).hood(1.82f, 0.1f).level(50)
+                    .hatch(1.42f, 0.05f, 1f).roofTilt(0.308f).topper(0f, 1.163f, 0.85f, 0.7f).topTilt(0.31f),
 
             new CarDef(12, "UNICORN DREAM", "Powered by glitter and pure confidence.", 0, 4.5f, 4.5f, 4.5f, 3.5f, 18, 11) {
                 public void build(MeshBuilder m) {
@@ -259,6 +271,7 @@ public final class Cars {
                     m.fixed(GLASS).ellipsoid(0, 1.22f, -0.22f, 0.7f, 0.22f, 0.72f, 16);
                     // rainbow mane swept back over the cabin, and a curly rainbow tail
                     for (int i = 0; i < 6; i++) {
+                        if (i >= 1 && i <= 3) continue; // the rider sits here
                         float z = 0.16f - i * 0.24f;
                         float k = (z + 0.28f) / 0.9f;
                         float y = 1.16f + 0.44f * (float) Math.sqrt(Math.max(0f, 1f - k * k));
@@ -308,7 +321,8 @@ public final class Cars {
                     m.fixed(0x1A1028).sphere(0.12f, 0.84f, 1.28f, 0.035f, 6);
                     eyes(m, 0.3f, 1.16f, 1.12f, 0.17f);
                 }
-            }.wheels(0.4f, 0.32f, 0.8f, 0.85f, -0.85f).topper(1.46f, 0.38f).hood(2.25f, -0.1f).rims(400),
+            }.wheels(0.4f, 0.32f, 0.8f, 0.85f, -0.85f).topper(1.46f, 0.42f).hood(2.25f, -0.1f).rims(400)
+                    .seat(CarDef.SADDLE, 1.72f, -0.42f, 0.95f).spread(0.8f),
 
             new CarDef(13, "TRAFFIC TITAN", "Red means go. Yellow means go. Green means GO GO GO!", 0, 5.5f, 5.5f, 5.5f, 5.5f, 15, 16) {
                 public void build(MeshBuilder m) {
@@ -393,7 +407,8 @@ public final class Cars {
                     }
                     eyes(m, 0.34f, 1.2f, 1.02f, 0.18f);
                 }
-            }.wheels(0.47f, 0.4f, 0.86f, 0.92f, -0.9f).topper(1.56f, -0.02f).level(100),
+            }.wheels(0.47f, 0.4f, 0.86f, 0.92f, -0.9f).level(100)
+                    .sunk(CarDef.HATCH, 1.55f, -0.02f, 1f, 0.12f).topper(0f, 1.08f, 0.7f, 0.7f),
     };
 
     /** Gold crown with traffic light jewels: base radius 0.42, about 0.6 tall. */

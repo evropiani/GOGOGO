@@ -3,6 +3,7 @@ package com.gogogo.desktop;
 import com.gogogo.game.engine.GL;
 import com.gogogo.game.engine.Input;
 import com.gogogo.game.engine.Platform;
+import com.gogogo.game.game.DriverRenderer;
 import com.gogogo.game.game.Game;
 
 import org.lwjgl.glfw.GLFW;
@@ -27,7 +28,7 @@ import javax.imageio.ImageIO;
  *
  * Usage: DesktopLauncher <assetsDir> <width> <height> "<script>"
  * Script commands (separated by ';'): wait N | tap X Y | down X Y | move X Y | up |
- * back | shot FILE | flag N | quit. Coordinates are UI units (the short side is 720).
+ * back | shot FILE | flag N | perf N | quit. Coordinates are UI units (the short side is 720).
  */
 public final class DesktopLauncher implements Platform {
     private final File assets;
@@ -110,6 +111,27 @@ public final class DesktopLauncher implements Platform {
                     save(t[1], w, h);
                     System.out.println("saved " + t[1]);
                     break;
+                case "perf": {
+                    // frame cost: N frames, each finished on the GPU, with the renderer's draw counters
+                    int n = Integer.parseInt(t[1]);
+                    double total = 0, worst = 0;
+                    long calls = 0, inst = 0;
+                    DriverRenderer.countFull = DriverRenderer.countBust = 0;
+                    for (int i = 0; i < n; i++) {
+                        long t0 = System.nanoTime();
+                        game.step(dt);
+                        GLES20.glFinish();
+                        double ms = (System.nanoTime() - t0) / 1e6;
+                        total += ms;
+                        worst = Math.max(worst, ms);
+                        calls += game.r.lastCalls;
+                        inst += game.r.lastInstances;
+                    }
+                    System.out.printf("perf %d frames: %.2f ms avg, %.2f ms worst, %.1f draw calls, %.1f instances, drivers %.1f full %.1f bust%n",
+                            n, total / n, worst, calls / (double) n, inst / (double) n,
+                            DriverRenderer.countFull / (double) n, DriverRenderer.countBust / (double) n);
+                    break;
+                }
                 case "flag":
                     // developer toggles for scripted tests
                     game.save.dev = true;
@@ -202,7 +224,11 @@ public final class DesktopLauncher implements Platform {
         return 0;
     }
 
-    public void playSound(int handle, float volume, float pitch) {
+    public int playSound(int handle, float volume, float pitch, boolean keep) {
+        return 0;
+    }
+
+    public void stopSound(int stream) {
     }
 
     public void playMusic(String path, float volume) {

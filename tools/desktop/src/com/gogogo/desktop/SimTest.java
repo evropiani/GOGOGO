@@ -32,7 +32,7 @@ public final class SimTest {
         table.append(String.format("%-13s %5s %11s %6s %5s  %6s %6s %6s %6s %6s  %9s  %s%n",
                 "map", "tiles", "rounds", "time", "ties", "miss", "shoved", "edge", "hole", "other", "falls/m", "rounds vs CLASSIC"));
         StringBuilder pow = new StringBuilder();
-        pow.append(String.format("%-13s %9s %9s %9s %9s %9s %9s %9s%n", "power-ups", "spawned/m", "picked/m", "used/m", "elims/m", "rescues/m", "hits/m", "used: snow ice jump sticky bump"));
+        pow.append(String.format("%-13s %9s %9s %9s %9s %9s %9s %9s%n", "power-ups", "spawned/m", "picked/m", "used/m", "elims/m", "rescues/m", "hits/m", "used: snow ice jump sticky bump nitro"));
         for (int map = from; map <= to; map++) {
             double totalRounds = 0, totalRounds2 = 0, totalTime = 0;
             int ties = 0;
@@ -122,10 +122,10 @@ public final class SimTest {
                     pct(cause[MISS], elims), pct(cause[SHOVED], elims), pct(cause[EDGE], elims), pct(cause[HOLE], elims),
                     pct(cause[OTHER], elims), showVoid / (float) runs,
                     classic > 0 && map > 0 ? String.format("%+.0f%%", (avgRounds / classic - 1f) * 100f) : ""));
-            pow.append(String.format("%-13s %9.1f %9.1f %9.1f %9.1f %9.2f %9.1f    %d %d %d %d %d%n", Maps.NAME[map], spawned / (float) runs,
+            pow.append(String.format("%-13s %9.1f %9.1f %9.1f %9.1f %9.2f %9.1f    %d %d %d %d %d %d%n", Maps.NAME[map], spawned / (float) runs,
                     picked / (float) runs,
                     used / (float) runs, powElims[0] / (float) runs, rescues / (float) runs, hits[0] / (float) runs,
-                    byType[0], byType[1], byType[2], byType[3], byType[4]));
+                    byType[0], byType[1], byType[2], byType[3], byType[4], byType[5]));
         }
         System.out.print(table);
         if (!noPow) System.out.print(pow);

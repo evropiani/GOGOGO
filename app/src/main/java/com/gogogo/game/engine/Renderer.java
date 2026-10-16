@@ -204,6 +204,8 @@ public final class Renderer {
     private final float[] planes = new float[24];
     private boolean cull;
     public int drawn, culled;
+    /** Debug counters of the last flush: draw calls (one per mesh) and instances drawn. */
+    public int lastCalls, lastInstances;
 
     /** Extracts the view frustum from a camera (call after Camera.update) to cull off-screen instances. */
     public void setFrustum(Camera cam) {
@@ -308,12 +310,17 @@ public final class Renderer {
         lit.set("u_fog", fog[0], fog[1], fog[2]);
         lit.set("u_abyss", abyss[0], abyss[1], abyss[2]);
         lit.set("u_fogRange", fogNear, fogFar);
+        int calls = 0;
         for (int i = 0; i < queue.size(); i++) {
             Mesh m = queue.get(i);
+            if (m.instCount > 0) calls++;
             m.drawInstances(gl);
             m.queued = false;
         }
         queue.clear();
+        lastCalls = calls;
+        lastInstances = drawn;
+        drawn = 0;
         cull = false;
 
         if (blobCount > 0) {

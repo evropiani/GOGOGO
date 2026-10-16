@@ -6,9 +6,22 @@ import com.gogogo.game.engine.UIBatch;
 
 import java.util.ArrayList;
 
-/** End of match: placement, coin rewards, XP and level ups, achievements. */
+/**
+ * End of match: placement, coin rewards, XP and level ups, achievements. The driver stands next to the car and
+ * emotes: by itself every few seconds (celebrating a win, now and then sulking after a loss), or the one picked in
+ * the row of emote buttons under it.
+ */
 public final class ResultsScreen extends Screen {
     private final Showroom room;
+    private final Driver driver = new Driver();
+    /** The emote buttons: the car's signature emote first, then the victory emotes in the line-up. */
+    private final int[] lineup = new int[1 + Emotes.COUNT];
+    private final String[] lineupId = new String[1 + Emotes.COUNT];
+    private int lineupCount, page, carId;
+    private float nextEmote = 1.3f;
+    /** The word of the emote playing, popping up over the driver. */
+    private float wordT;
+    private final float[] proj = new float[2];
     private final int place, total, rounds, bonks;
     private final boolean won, tied;
     private final int[] rewardVal = new int[5];
@@ -78,6 +91,11 @@ public final class ResultsScreen extends Screen {
         r.car = p.def.id;
         r.hoodCam = m.hoodWin;
         r.coins = sum;
+        r.powers = p.powersUsed;
+        r.nitros = p.nitros;
+        r.nitroBonks = p.nitroBonks;
+        r.emotes = p.emotes;
+        r.gloats = p.gloats;
         if (counts) {
             outcome = Progress.commitMatch(s, r);
         } else {
@@ -99,10 +117,52 @@ public final class ResultsScreen extends Screen {
 
         room = new Showroom(game);
         room.showSaved(s.selectedCar);
-        room.screenY = 0.52f;
+        room.screenY = 0.48f;
         room.screenX = 0.27f;
         room.distance = 15f;
         if (won || tied) room.pedestalColor = 0xFFD23F;
+        // the driver steps out and stands next to the car, both turned to the camera
+        room.stand = driver;
+        room.spinSpeed = 0f;
+        room.carX = -1.25f;
+        room.carZ = -0.6f;
+        room.carYaw = 0.75f;
+        room.standX = 1.6f;
+        room.standZ = 1.1f;
+        room.standYaw = -0.25f;
+        room.standScale = 1.2f;
+        driver.setLook(s.look);
+        driver.mode = Driver.STANDING;
+        driver.reset();
+        driver.mode = Driver.STANDING;
+        carId = s.selectedCar;
+        lineup[lineupCount++] = Emotes.signature(carId);
+        for (int i = 0; i < Emotes.COUNT; i++) if (Items.equipped(s, Items.EMOTE, i)) lineup[lineupCount++] = Emotes.VICTORY[i];
+        for (int i = 0; i < lineupId.length; i++) lineupId[i] = "emo" + i;
+    }
+
+    /** An emote by itself: a winner celebrates with anything in the line-up, a loser sulks now and then. */
+    private int pickEmote() {
+        if (!won && !tied && Math.random() < 0.35) return Emotes.SULK;
+        // the car's own emote comes up a bit more often
+        int i = Math.random() < 0.25 ? 0 : (int) (Math.random() * lineupCount);
+        return lineup[Math.min(lineupCount - 1, i)];
+    }
+
+    private void playEmote(int move) {
+        driver.aim = aimAtCamera();
+        driver.play(move);
+        wordT = 1.6f;
+        nextEmote = Emotes.DUR[move] + 2.5f + (float) Math.random() * 2f;
+        game.sfx.play(Emotes.SOUND[move], 0.8f * Emotes.VOLUME[move], Emotes.PITCH[move]);
+    }
+
+    /** Which way the camera is from the standing driver, as a turn from where it faces. */
+    private float aimAtCamera() {
+        float a = (float) Math.atan2(game.cam.ex - room.headX, game.cam.ez - room.headZ) - (room.spin + room.standYaw);
+        while (a > Math.PI) a -= 2f * (float) Math.PI;
+        while (a < -Math.PI) a += 2f * (float) Math.PI;
+        return a;
     }
 
     private void add(String name, int v) {
@@ -118,6 +178,15 @@ public final class ResultsScreen extends Screen {
 
     public void update(float dt) {
         t += dt;
+        // the pedestal sways a little instead of spinning, so the driver keeps facing us
+        room.spin = 0.12f + (float) Math.sin(t * 0.45f) * 0.2f;
+        if (driver.emoting()) {
+            driver.aim = aimAtCamera();
+        } else {
+            nextEmote -= dt;
+            if (nextEmote <= 0) playEmote(pickEmote());
+        }
+        if (wordT > 0) wordT -= dt;
         room.update(dt);
         float target = t > 0.8f ? Math.min(coinsTotal, (t - 0.8f) * Math.max(120f, coinsTotal * 0.9f)) : 0;
         shown = target;
@@ -186,7 +255,9 @@ public final class ResultsScreen extends Screen {
             b.text(b.title, "NEW BEST!", bx, top + 42, 27f * k2, 0xFFFFFFFF, UIBatch.CENTER, 0, 0);
         }
 
+        emoteWord(b);
         xpCard(b, lcx, bottom - 124, Math.min(560f, W * 0.5f - left - 40));
+        emoteRow(b, ui, lcx, bottom - 124 - 50, W * 0.5f - left - 10);
         if (lvBurstT >= 0) levelBurst(b, game.ui, lcx, bottom - 172);
 
         // reward panel (right column)
@@ -227,6 +298,71 @@ public final class ResultsScreen extends Screen {
         if (ui.button("garage", bx + bw / 2 + 10, by + 122, bw / 2 - 10, 86, 0xFFFF9A2B, "GARAGE", 42f)) {
             leave(new GarageScreen(game));
         }
+    }
+
+    /** The word of the emote playing, over the driver's head. */
+    private void emoteWord(UIBatch b) {
+        int m = driver.emote;
+        if (wordT <= 0 || m < 0 || !game.cam.project(room.headX, room.headY + 0.9f, room.headZ, proj)) return;
+        float k = Ease.outBack(Math.min(1f, (1.6f - wordT) * 6f));
+        float y = proj[1] / b.scale - (1.6f - wordT) * 14f;
+        b.alpha(Math.min(1f, wordT * 3f));
+        b.textShadow(b.title, Emotes.WORD[m], proj[0] / b.scale, y, 46f * k, Emotes.WORD_COLOR[m], UIBatch.CENTER, 0xFF2A1840, 5f, 5f, 0x60200040);
+        b.alpha(1f);
+    }
+
+    /**
+     * Round emote buttons in a row over the XP card (the car's own emote first), paged with arrows when they don't
+     * all fit. Tapping one plays it right away.
+     */
+    private void emoteRow(UIBatch b, UI ui, float cx, float cy, float maxW) {
+        float r = 34, step = 80;
+        // all of them if they fit in the tray, else pages with an arrow on each side
+        int per = lineupCount;
+        if ((lineupCount - 1) * step + 2 * r + 24 > maxW) per = Math.max(1, (int) ((maxW - 2 * r - 24 - 2 * 62) / step) + 1);
+        int pages = (lineupCount + per - 1) / per;
+        per = (lineupCount + pages - 1) / pages; // pages of about the same size
+        if (page >= pages) page = 0;
+        int first = page * per, count = Math.min(per, lineupCount - first);
+        float k = Ease.outBack(Math.min(1f, Math.max(0f, (t - 0.6f) * 2.5f)));
+        cy += (1f - k) * 220;
+        float rowW = (count - 1) * step;
+        float x0 = cx - rowW / 2;
+        // a dark tray behind the buttons (and the page arrows) so the row reads apart from the pedestal
+        float tw = rowW + 2 * r + 24 + (pages > 1 ? 2 * 62 : 0);
+        b.shape(cx, cy + 4, tw, 2 * r + 20, r + 10, 0x40200040, 0, 0, 0, 6, 0);
+        b.shape(cx, cy, tw, 2 * r + 20, r + 10, 0xC02A1840, 0, 0, 0, 0, 0);
+        for (int j = 0; j < count; j++) {
+            int i = first + j, m = lineup[i];
+            float x = x0 + j * step;
+            if (ui.hit(lineupId[i], x - r - 4, cy - r - 4, 2 * r + 8, 2 * r + 8)) {
+                playEmote(m);
+                nextEmote += 2f;
+            }
+            boolean on = driver.emote == m;
+            float sc = (1f + (float) Math.sin(ui.bounce(lineupId[i]) * Math.PI) * 0.12f) * (on ? 1.08f : 1f);
+            float rr = r * sc;
+            b.circle(x, cy + 5, rr, 0x50200040);
+            b.shape(x, cy, rr * 2, rr * 2, rr, on ? 0xFFFFF3C4 : 0xFFFFFFFF, on ? 0xFFFFC21F : 0xFF2A1840, on ? 5f : 3f, 0.2f, 0, 0);
+            if (i == 0) {
+                Save s = game.save;
+                EmoteIcons.signature(game, carId, s.carPaint[carId], s.carAccent[carId], x, cy, rr * 1.35f, t);
+            } else {
+                EmoteIcons.move(game, m, x, cy, rr * 1.7f, EmoteIcons.color(m), t);
+            }
+        }
+        if (pages > 1) {
+            float ax = x0 - 62, bx = x0 + rowW + 62;
+            if (ui.roundButton("emoprev", ax, cy, 26, 0xFF8E62FF)) page = (page + pages - 1) % pages;
+            chevron(b, ax, cy + ui.lastRoundPress, -1);
+            if (ui.roundButton("emonext", bx, cy, 26, 0xFF8E62FF)) page = (page + 1) % pages;
+            chevron(b, bx, cy + ui.lastRoundPress, 1);
+        }
+    }
+
+    private static void chevron(UIBatch b, float x, float y, int dir) {
+        b.line(x + dir * 6, y, x - dir * 5, y - 11, 6, 0xFFFFFFFF);
+        b.line(x + dir * 6, y, x - dir * 5, y + 11, 6, 0xFFFFFFFF);
     }
 
     /** Level seal, "+XP" counter and the filling XP bar, under the car. */

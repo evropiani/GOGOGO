@@ -2,6 +2,7 @@ package com.gogogo.game.game;
 
 import com.gogogo.game.engine.Ease;
 import com.gogogo.game.engine.M4;
+import com.gogogo.game.engine.UIBatch;
 
 /** A single car spinning on a pedestal (garage, results, reveal). */
 public final class Showroom {
@@ -22,6 +23,19 @@ public final class Showroom {
     public float distance = 17f;
     public float height = 7f;
 
+    /**
+     * A driver standing on the pedestal next to the car (the car's own seat stays empty), or null. Placed by
+     * standX / standZ and the car by carX / carZ (pedestal space), the car turned by carYaw; both turn with it.
+     */
+    public Driver stand;
+    public float standX, standZ, standYaw, standScale = 1f, carX, carZ, carYaw;
+    /** Where the standing driver's head is in the world (for words popping up over it), updated every frame. */
+    public float headX, headY, headZ;
+    /** An emote coming up for the driver (emote()), -1 = none; and how long its word stays up. */
+    private int pendMove = -1;
+    private float pendT, wordT;
+    private final float[] head = new float[3], proj = new float[2];
+
     public Showroom(Game game) {
         this.game = game;
     }
@@ -31,6 +45,8 @@ public final class Showroom {
         boolean same = car != null && car.def.id == carId;
         car = new Car(0, Cars.ALL[carId], "", false, lv);
         car.setLook(paint, accent, topper, wheel);
+        car.driver.setLook(game.save.look);
+        car.driver.settle();
         if (animate && !same) drop = 1f;
         else if (animate) car.squashV = -6f;
     }
@@ -38,6 +54,56 @@ public final class Showroom {
     public void showSaved(int carId) {
         Save s = game.save;
         show(carId, s.carPaint[carId], s.carAccent[carId], s.carTopper[carId], s.carWheel[carId], true);
+    }
+
+    /** Plays an emote on the driver (the standing one, else the one in the car) after delay seconds. */
+    public void emote(int move, float delay) {
+        pendMove = move;
+        pendT = delay;
+    }
+
+    /** The driver emotes play on. */
+    private Driver performer() {
+        return stand != null ? stand : car.driver;
+    }
+
+    /** Which way the camera is from the driver, as a turn from where its body faces. */
+    private float aimAtCamera() {
+        float x, z, yaw;
+        if (stand != null) {
+            x = headX;
+            z = headZ;
+            yaw = spin + standYaw;
+        } else {
+            x = car.x;
+            z = car.z;
+            yaw = car.yaw;
+        }
+        float a = (float) Math.atan2(game.cam.ex - x, game.cam.ez - z) - yaw;
+        while (a > Math.PI) a -= 2f * (float) Math.PI;
+        while (a < -Math.PI) a += 2f * (float) Math.PI;
+        return a;
+    }
+
+    /** The word of the emote() playing, over the driver's head but no higher than minY (from the screen's ui()). */
+    public void drawWord(UIBatch b, float minY) {
+        if (wordT <= 0 || car == null) return;
+        Driver d = performer();
+        int m = d.emote;
+        float hx = headX, hy = headY, hz = headZ;
+        if (stand == null) {
+            Emotes.seatHead(car, head);
+            hx = head[0];
+            hy = head[1];
+            hz = head[2];
+        }
+        if (m < 0 || !game.cam.project(hx, hy + 0.9f, hz, proj)) return;
+        float k = Ease.outBack(Math.min(1f, (1.6f - wordT) * 6f));
+        b.alpha(Math.min(1f, wordT * 3f));
+        float y = Math.max(minY, proj[1] / b.scale) - (1.6f - wordT) * 14f;
+        b.textShadow(b.title, Emotes.WORD[m], proj[0] / b.scale, y, 44f * k, Emotes.WORD_COLOR[m], UIBatch.CENTER, 0xFF2A1840, 5f, 5f,
+                0x60200040);
+        b.alpha(1f);
     }
 
     public void celebrate() {
@@ -62,6 +128,32 @@ public final class Showroom {
         car.topX += car.topVX * dt;
         car.topZ += car.topVZ * dt;
         car.wheelSpin += dt * 2f;
+        if (pendMove >= 0) {
+            pendT -= dt;
+            if (pendT <= 0) {
+                Driver d = performer();
+                d.aim = aimAtCamera();
+                d.play(pendMove);
+                game.sfx.play(Emotes.SOUND[pendMove], 0.7f * Emotes.VOLUME[pendMove], Emotes.PITCH[pendMove]);
+                wordT = 1.6f;
+                pendMove = -1;
+            }
+        }
+        if (wordT > 0) wordT -= dt;
+        car.driver.idle(dt);
+        if (stand == null && car.driver.emoting()) {
+            car.driver.aim = aimAtCamera();
+            float yaw = Emotes.seatHead(car, head);
+            Emotes.fx(fx, car.driver, head[0], head[1], head[2], yaw, car.def.seatScale);
+        }
+        if (stand != null) {
+            stand.idle(dt);
+            float cs = (float) Math.cos(spin), sn = (float) Math.sin(spin), s = standScale;
+            headX = standX * cs + standZ * sn;
+            headZ = -standX * sn + standZ * cs;
+            headY = (Driver.STAND_Y + stand.pos[Driver.RISE] + Driver.NECK_Y + Driver.HEAD_Y) * s;
+            Emotes.fx(fx, stand, headX, headY, headZ, spin + standYaw + stand.pos[Driver.TURN], s);
+        }
     }
 
     public void render() {
@@ -79,13 +171,23 @@ public final class Showroom {
         game.beginWorld();
         M4.trs(m, 0, 0, 0, spin * 0.3f, 0, 0, 1, 1, 1);
         game.r.draw(game.art.pedestal, m, pedestalColor, pedestalAccent, 0f);
+        float cs = (float) Math.cos(spin), sn = (float) Math.sin(spin);
         if (car != null) {
-            car.yaw = spin;
+            car.yaw = spin + carYaw;
+            car.x = carX * cs + carZ * sn;
+            car.z = -carX * sn + carZ * cs;
             float y = drop > 0 ? Ease.inCubic(drop) * 12f : 0f;
             car.y = y;
+            car.driver.hidden = stand != null;
             CarRenderer.draw(game.r, game.art, car, time, base, m);
-            game.r.blob(0, 0.03f, 0, 1.6f, 1.3f, spin, 0.45f * (1f - Math.min(1f, y / 8f)));
+            game.r.blob(car.x, 0.03f, car.z, 1.6f, 1.3f, car.yaw, 0.45f * (1f - Math.min(1f, y / 8f)));
         }
+        if (stand != null) {
+            float x = standX * cs + standZ * sn, z = -standX * sn + standZ * cs;
+            DriverRenderer.standing(game.r, game.art, stand, x, 0f, z, spin + standYaw, standScale, 0f);
+            game.r.blob(x, 0.03f, z, 0.55f * standScale, 1f, 0f, 0.4f);
+        }
+        fx.faceYaw = (float) Math.atan2(game.cam.ex - game.cam.tx, game.cam.ez - game.cam.tz);
         fx.draw(game.r, game.art);
     }
 }

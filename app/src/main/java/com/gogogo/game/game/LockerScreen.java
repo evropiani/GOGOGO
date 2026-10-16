@@ -409,13 +409,19 @@ public final class LockerScreen extends Screen {
                 }
                 break;
             }
-            default:
+            case Items.TRAIL:
                 trailIcon(game, cx, cy, s, i, t);
+                break;
+            case Items.EMOTE:
+                EmoteIcons.move(game, Emotes.VICTORY[i], cx, cy, s, EmoteIcons.color(Emotes.VICTORY[i]), t);
+                break;
+            default:
+                DriverScreen.icon(game, cat - Items.HAT, i, cx, cy, s, t);
                 break;
         }
     }
 
-    private static void carIcon(UIBatch b, float cx, float cy, float s, int body, int accent) {
+    static void carIcon(UIBatch b, float cx, float cy, float s, int body, int accent) {
         float k = s / 60f;
         b.shape(cx, cy + 22 * k, 52 * k, 10 * k, 5 * k, 0x40200040, 0, 0, 0, 3, 0);
         b.shape(cx - 2 * k, cy - 8 * k, 30 * k, 18 * k, 8 * k, accent, 0, 0, 0.3f, 0, 0);

@@ -385,11 +385,75 @@ def fx_boom():
     return np.tanh(mix(low * 1.3, blast * 0.9, click * 0.6) * 1.4)
 
 
+def fx_nitro():
+    # nitro kicking in: a gassy hiss, a whump of fire and an engine winding up under a rising whoosh
+    d = 0.9
+    hiss = noise(0.25)
+    hiss = (hiss - lowpass(hiss, 3000)) * env(0.25, 0.005, 0.05, 0.6, 0.12) * 0.5
+    whump = sine(expsweep(120, 48, 0.4), 0.4) * decay(0.4, 9)
+    fire = lowpass(noise(d), expsweep(600, 5000, d)) * env(d, 0.06, 0.2, 0.7, 0.4)
+    f = expsweep(90, 260, d)
+    eng = lowpass(saw(f, d) + saw(f * 1.012, d), 2200) * env(d, 0.08, 0.2, 0.7, 0.35)
+    return np.tanh(mix(hiss, at(whump * 1.2, 0.08), at(fire * 0.8, 0.08), at(eng * 0.6, 0.1)) * 1.3)
+
+
+def fx_nitro_roar():
+    # five seconds of afterburner: a growling engine on a rushing flame with crackles, fading out at the end
+    d = 5.0
+    n = int(SR * d)
+    t = np.linspace(0, 1, n)
+    f = 82 + 38 * t ** 0.5 + 3 * np.sin(2 * np.pi * 5.5 * t * d)
+    eng = saw(f, d) + 0.6 * saw(f * 1.5, d) + 0.5 * square(f * 0.5, d, 0.4)
+    eng = lowpass(eng, 1300) * (0.8 + 0.2 * np.sin(2 * np.pi * 27 * t * d))
+    rush = noise(d)
+    rush = lowpass(rush, 3200) - lowpass(rush, 400)
+    pops = (rng.uniform(0, 1, n) < 0.0015).astype(np.float64)
+    pops = lowpass(pops, 900) * 30 * lowpass(noise(d), 2500)
+    e = env(d, 0.04, 0.3, 0.85, 0.7)
+    return np.tanh((eng * 0.6 + rush * 0.7 + pops * 0.4) * e * 1.2)
+
+
 def power_effects():
     return {
         "pickup": fx_pickup, "throw": fx_throw, "splat": fx_splat, "freeze": fx_freeze, "spring": fx_spring,
         "thud": fx_thud, "goo": fx_goo, "boom": fx_boom,
     }
+
+
+def nitro_effects():
+    return {"nitro": fx_nitro, "nitro_roar": fx_nitro_roar}
+
+
+# ------------------------------------------------------------------ emotes
+
+def fx_raspberry():
+    # a wet, flappy "pbbbt": buzzing lips fluttering open and shut, with a little spit
+    d = 0.75
+    t = t_of(d)
+    f = 105 + 20 * np.sin(2 * np.pi * 3 * t)
+    flap = 0.55 + 0.45 * np.sign(np.sin(2 * np.pi * 27 * t))
+    buzz = lowpass(saw(f, d) * flap, 1500)
+    spit = noise(d)
+    spit = (spit - lowpass(spit, 2500)) * 0.3 * (0.5 + 0.5 * np.abs(np.sin(2 * np.pi * 13 * t)))
+    e = env(d, 0.02, 0.1, 0.8, 0.22)
+    return np.tanh((buzz * 1.3 + spit) * e * 1.6)
+
+
+def fx_taunt():
+    # "na na na-na naaa": the playground taunt on a kazoo
+    out = np.zeros(int(SR * 1.0))
+    seq = [(79, 0.0, 0.15), (76, 0.16, 0.14), (81, 0.31, 0.13), (79, 0.45, 0.15), (76, 0.62, 0.3)]
+    for n, start, d in seq:
+        tt = t_of(d)
+        f = note(n) * (1 + 0.012 * np.sin(2 * np.pi * 7 * tt))
+        v = square(f, d, 0.3) * 0.5 + saw(f, d) * 0.5
+        v = bandpass(v, 1500, 1.5) * 1.5 + lowpass(v, 900) * 0.6
+        out = mix(out, at(v * env(d, 0.01, 0.04, 0.8, 0.05), start))
+    return out
+
+
+def emote_effects():
+    return {"raspberry": fx_raspberry, "taunt": fx_taunt}
 
 
 # ------------------------------------------------------------------ music
@@ -496,6 +560,12 @@ def main():
 
     # made after the music, so adding them changed none of the sounds above
     for name, fn in power_effects().items():
+        save(name, fn())
+        print("sfx", name)
+    for name, fn in nitro_effects().items():
+        save(name, fn())
+        print("sfx", name)
+    for name, fn in emote_effects().items():
         save(name, fn())
         print("sfx", name)
 

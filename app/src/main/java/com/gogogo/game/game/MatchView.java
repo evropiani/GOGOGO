@@ -37,7 +37,10 @@ public final class MatchView implements Match.Listener {
     private static final int POPS = 24;
     private final String[] popText = new String[POPS];
     private final float[] popX = new float[POPS], popY = new float[POPS], popZ = new float[POPS], popT = new float[POPS];
+    private final float[] popRate = new float[POPS];
     private final int[] popColor = new int[POPS];
+    /** The car a popup rides along over (emote words; null = it stays where it popped up). */
+    private final Car[] popCar = new Car[POPS];
     private int popCursor;
     private final float[] proj = new float[4];
 
@@ -62,13 +65,26 @@ public final class MatchView implements Match.Listener {
         popY[i] = y;
         popZ[i] = z;
         popT[i] = 1f;
+        popRate[i] = 0.9f;
         popColor[i] = color;
+        popCar[i] = null;
+    }
+
+    /** A popup riding along high over a car for a while (y over its roof). */
+    public void popOver(Car c, String text, float y, int color, float life) {
+        pop(text, c.x, y, c.z, color);
+        int i = (popCursor + POPS - 1) % POPS;
+        popCar[i] = c;
+        popRate[i] = 1f / life;
     }
 
     public void update(float dt) {
         time += dt;
         fx.update(dt);
-        for (int i = 0; i < POPS; i++) if (popT[i] > 0) popT[i] -= dt * 0.9f;
+        for (int i = 0; i < POPS; i++) if (popT[i] > 0) popT[i] -= dt * popRate[i];
+        // emotes play towards the camera
+        match.viewX = game.cam.ex;
+        match.viewZ = game.cam.ez;
         // boost trails
         for (Car c : match.cars) {
             if (c.boostT > 0 && !c.falling && Math.random() < 0.6) {
@@ -78,6 +94,19 @@ public final class MatchView implements Match.Listener {
         }
         if (skin == Skins.GOLDEN) sparkleTiles();
         powerFx(dt);
+        emoteFx();
+    }
+
+    private final float[] head = new float[3];
+
+    /** Particles of the emotes playing close to the camera (tears, hearts, bubbles...). */
+    private void emoteFx() {
+        for (Car c : match.cars) {
+            Driver d = c.driver;
+            if (d.emote < 0 || c.falling || c == hoodCar || !isNear(c.x, c.z, 35f)) continue;
+            float yaw = Emotes.seatHead(c, head);
+            Emotes.fx(fx, d, head[0], head[1], head[2], yaw, c.def.seatScale);
+        }
     }
 
     /** GOLDEN GLORY: twinkles popping up on tiles around the camera. */
@@ -137,7 +166,8 @@ public final class MatchView implements Match.Listener {
                 break;
             case Match.EV_BONK:
                 if (a == p && !quiet) {
-                    pop("BONKED " + b.name.toUpperCase() + "!", a.x, 3.5f, a.z, 0xFFFF4FA3);
+                    boolean torched = b.lastHitPower == PowerUps.NITRO;
+                    pop((torched ? "TORCHED " : "BONKED ") + b.name.toUpperCase() + "!", a.x, 3.5f, a.z, torched ? 0xFFFF6A3A : 0xFFFF4FA3);
                     s.play(Sfx.COIN, 0.8f, 1.2f);
                 }
                 break;
@@ -167,6 +197,17 @@ public final class MatchView implements Match.Listener {
             case Match.EV_RESCUE:
                 powerEvent(type, a, b, v);
                 break;
+            case Match.EV_EMOTE: {
+                // its word pops up over it (readable from afar), with a sound when close
+                int mv = (int) v;
+                if (isNear(a.x, a.z, a == p ? 60f : 40f)) {
+                    popOver(a, Emotes.WORD[mv], a.def.topmost() + 0.8f, Emotes.WORD_COLOR[mv], 1.7f);
+                }
+                if (!quiet && isNear(a.x, a.z, 26f)) {
+                    s.play(Emotes.SOUND[mv], (a == p ? 0.9f : 0.5f) * Emotes.VOLUME[mv], Emotes.PITCH[mv] * (0.95f + (float) Math.random() * 0.1f));
+                }
+                break;
+            }
             case Match.EV_DUCK_GET:
                 if (!quiet) {
                     s.play(Sfx.QUACK, 1f, 1f);
@@ -239,7 +280,9 @@ public final class MatchView implements Match.Listener {
             if (dy > -1f) r.blob(match.duckX, dy + 0.03f, match.duckZ, 0.6f, 1f, 0, 0.35f);
         }
 
+        rankDrivers();
         for (Car c : match.cars) {
+            if (c.driver.flung) DriverRenderer.flung(r, art, c.driver, lod[c.index]);
             if (c.y < -85f) continue;
             drawCar(c, c == match.player && c.alive);
         }
@@ -249,14 +292,69 @@ public final class MatchView implements Match.Listener {
         fx.draw(r, art);
     }
 
+    // drivers: the whole ragdoll for the few closest to the camera, a one-piece stand-in further out, none far away.
+    // Every hat, hairdo, face, shirt and thing in hand worn by a whole driver is a draw call of its own (about 3 more
+    // per whole driver), while all the stand-ins together take 2.
+    private static final int FULL_DRIVERS = 10;
+    private static final float FULL_R = 30f, BUST_R = 80f;
+    private final int[] near = new int[FULL_DRIVERS];
+    private final float[] nearD = new float[FULL_DRIVERS];
+    private byte[] lod = new byte[0];
+
+    /**
+     * Picks every driver's level of detail by its distance from the camera (the followed car always gets FULL).
+     * Drivers behind the camera and the one the hood camera sits in take no FULL slot.
+     */
+    private void rankDrivers() {
+        Car[] cs = match.cars;
+        if (lod.length < cs.length) lod = new byte[cs.length];
+        Camera cam = game.cam;
+        float ex = cam.ex, ey = cam.ey, ez = cam.ez;
+        float fx = cam.tx - ex, fy = cam.ty - ey, fz = cam.tz - ez;
+        float fl = (float) Math.sqrt(fx * fx + fy * fy + fz * fz);
+        if (fl > 1e-4f) {
+            fx /= fl;
+            fy /= fl;
+            fz /= fl;
+        }
+        int n = 0;
+        for (int i = 0; i < cs.length; i++) {
+            Car c = cs[i];
+            Driver dv = c.driver;
+            float x = dv.flung ? dv.wx : c.x, y = dv.flung ? dv.wy : c.y, z = dv.flung ? dv.wz : c.z;
+            float dx = x - ex, dy = y - ey, dz = z - ez;
+            float d2 = dx * dx + dy * dy + dz * dz;
+            boolean behind = dx * fx + dy * fy + dz * fz < -2.5f;
+            lod[i] = (byte) (d2 < BUST_R * BUST_R && !behind ? DriverRenderer.BUST : DriverRenderer.NONE);
+            if (behind || (c == hoodCar && !dv.flung)) continue;
+            if (c == camCar && !dv.flung) d2 = -1f;
+            if (d2 >= FULL_R * FULL_R) continue;
+            // keep the closest few, sorted by distance
+            int k;
+            if (n < FULL_DRIVERS) k = n++;
+            else if (d2 < nearD[FULL_DRIVERS - 1]) k = FULL_DRIVERS - 1;
+            else continue;
+            while (k > 0 && nearD[k - 1] > d2) {
+                near[k] = near[k - 1];
+                nearD[k] = nearD[k - 1];
+                k--;
+            }
+            near[k] = i;
+            nearD[k] = d2;
+        }
+        for (int k = 0; k < n; k++) lod[near[k]] = DriverRenderer.FULL;
+    }
+
     public void drawCar(Car c, boolean marker) {
         Renderer r = game.r;
         Art art = game.art;
         CarDef d = c.def;
-        CarRenderer.draw(r, art, c, time, base, m, c != hoodCar);
+        int dl = c.index < lod.length ? lod[c.index] : DriverRenderer.FULL;
+        CarRenderer.draw(r, art, c, time, base, m, c != hoodCar, dl);
         if (c == hoodCar) marker = false;
 
         if (c.frozenT > 0) drawIce(r, art, c, c == hoodCar);
+        if (c.nitroT > 0 && (c == hoodCar || isNear(c.x, c.z, 45f))) drawNitro(r, art, c, c == hoodCar);
         if (c.power >= 0 && c != hoodCar && !c.falling) drawHeld(r, art, c);
 
         // shadow on the floor (in a super jump it stays, so you can see where you come down)
@@ -283,7 +381,7 @@ public final class MatchView implements Match.Listener {
         }
 
         if (marker) {
-            M4.trs(m, c.x, c.y + d.topY + 2.6f + (float) Math.abs(Math.sin(time * 5f)) * 0.6f, c.z, time * 2.5f, 0, 0, 1.3f, 1.3f, 1.3f);
+            M4.trs(m, c.x, c.y + d.topmost() + 1.7f + (float) Math.abs(Math.sin(time * 5f)) * 0.6f, c.z, time * 2.5f, 0, 0, 1.3f, 1.3f, 1.3f);
             r.draw(art.marker, m, 0xFFE14D, 0xFFE14D, 0.3f);
             if (t != null && !c.falling && (!c.airborne || (floor && t.state != Arena.FALLING))) {
                 float pulse = 1.55f + (float) Math.sin(time * 6f) * 0.08f;
@@ -431,6 +529,26 @@ public final class MatchView implements Match.Listener {
                 if (near) s.play(Sfx.GOO, vol, 1f);
                 if (me && !quiet) pop("STICKY!", a.x, 3.4f, a.z, 0xFFE09AFF);
                 break;
+            case PowerUps.NITRO: {
+                // a burst of fire out of the back and a ring behind the car
+                float bx = a.x - fx0 * 1.8f, bz = a.z - fz0 * 1.8f;
+                for (int k = 0; k < 12; k++) {
+                    int i = fx.spawn(Particles.BALL, bx + rnd(0.4f), a.y + 0.6f + rnd(0.3f), bz + rnd(0.4f), -fx0 * 7f + rnd(2.5f),
+                            1f + (float) Math.random() * 2f, -fz0 * 7f + rnd(2.5f), 0.25f + (float) Math.random() * 0.22f,
+                            0.35f + (float) Math.random() * 0.25f, NITRO_CORE, -1.5f);
+                    fx.fade(i, NITRO_EMBER);
+                    fx.glow(i, 0.15f);
+                    fx.drag(i, 3f);
+                }
+                wave(bx, a.y + 0.5f, bz, 2.6f, 0.3f, PowerUps.COLOR[PowerUps.NITRO]);
+                if (near) s.play(Sfx.NITRO, vol, 0.95f + (float) Math.random() * 0.1f);
+                if (me && !quiet) {
+                    pop("VROOOM!", a.x, 3.4f, a.z, 0xFFFF6A5A);
+                    game.vibrate(45);
+                    game.shake(0.35f, 0.3f);
+                }
+                break;
+            }
             default: {
                 float rr = PowerUps.SHOCK_RADIUS;
                 wave(a.x, a.y + 0.2f, a.z, rr, 0.45f, PowerUps.COLOR[PowerUps.SUPER_BUMP]);
@@ -501,6 +619,18 @@ public final class MatchView implements Match.Listener {
                     fx.sparkle(wx, c.y + 0.5f, wz, 0.3f, 0xF6D2FF);
                 }
             }
+            if (c.nitroT > 0 && c != hoodCar && Math.random() < 0.7 && isNear(c.x, c.z, 40f)) {
+                // fire licking out of the exhaust
+                float fx0 = (float) Math.sin(c.yaw), fz0 = (float) Math.cos(c.yaw);
+                float back = game.art.carBack[c.def.id] - 0.5f;
+                float side = (Math.random() < 0.5 ? -1f : 1f) * Math.max(0.25f, c.def.wheelX * 0.42f);
+                float ex = c.x + fx0 * back + fz0 * side, ez = c.z + fz0 * back - fx0 * side;
+                int k = fx.spawn(Particles.BALL, ex, c.y + c.def.wheelR + rnd(0.1f), ez, c.vx * 0.4f - fx0 * 3f + rnd(1f), 0.8f + (float) Math.random(),
+                        c.vz * 0.4f - fz0 * 3f + rnd(1f), 0.2f + (float) Math.random() * 0.18f, 0.25f + (float) Math.random() * 0.15f, NITRO_CORE, -1f);
+                fx.fade(k, NITRO_EMBER);
+                fx.glow(k, 0.15f);
+                fx.drag(k, 4f);
+            }
             if (c.airborne && c != hoodCar && Math.random() < 0.5 && isNear(c.x, c.z, 40f)) {
                 // a twinkly trail under and behind the car
                 float bx = c.x - (float) Math.sin(c.yaw) * 1.2f, bz = c.z - (float) Math.cos(c.yaw) * 1.2f;
@@ -559,7 +689,7 @@ public final class MatchView implements Match.Listener {
     private void drawHeld(Renderer r, Art art, Car c) {
         CarDef d = c.def;
         float fx0 = (float) Math.sin(c.yaw), fz0 = (float) Math.cos(c.yaw);
-        float top = Math.max(d.topY + (c.topper > 0 ? 1f : 0.1f), art.carTop[d.id]);
+        float top = Math.max(Math.max(d.topY + (c.topper > 0 ? d.topScale : 0.1f), d.driverTop + 0.1f), art.carTop[d.id]);
         boolean followed = c == camCar;
         float y = c.y + c.hop + top + (followed ? 0.4f : 0.55f) + (float) Math.sin(time * 3.4f + c.index) * 0.08f;
         float px = c.x - fx0 * 0.35f, pz = c.z - fz0 * 0.35f;
@@ -570,6 +700,44 @@ public final class MatchView implements Match.Listener {
         int col = PowerUps.COLOR[c.power];
         M4.trs(m, px, y - s * 0.6f, pz, 0, 0, 0, s * 0.7f, 0.8f, s * 0.7f);
         r.draw(art.ring, m, col, col, 0.45f);
+    }
+
+    /** Nitro fire colors: the outer flame, its hot core, and what the sparks cool down to. */
+    static final int NITRO_FLAME = 0xFF6A1F, NITRO_CORE = 0xFFD23B, NITRO_EMBER = 0xFF3A12;
+
+    /**
+     * Nitro: two flickering flames out of the back of the body and speed streaks sliding back along its sides
+     * (from the hood camera only the streaks, they whizz past the edges of the view).
+     */
+    private void drawNitro(Renderer r, Art art, Car c, boolean hood) {
+        CarDef d = c.def;
+        float k = Math.min(1f, c.nitroT * 2.5f); // dies down in its last moments
+        float sp = c.speed();
+        if (!hood) {
+            float back = art.carBack[d.id] + 0.08f, y = d.wheelR * 1.05f;
+            float sx = Math.max(0.25f, d.wheelX * 0.42f);
+            for (int s = -1; s <= 1; s += 2) {
+                float flick = 0.85f + 0.3f * (float) Math.sin(time * 41f + c.index * 3.1f + s * 1.7f) + 0.12f * (float) Math.sin(time * 67f + s);
+                float len = (1.1f + 0.6f * Math.min(1f, sp / 22f)) * flick * k;
+                float w = 0.9f * k;
+                M4.copy(base, m);
+                M4.postTranslate(m, s * sx, y, back);
+                M4.postScale(m, w, w, len);
+                r.draw(art.flame, m, NITRO_FLAME, NITRO_CORE, 0.3f);
+            }
+        }
+        if (sp < 6f) return;
+        float len = Math.min(1f, (sp - 6f) / 10f) * k;
+        for (int i = 0; i < 4; i++) {
+            float ph = (time * 2.4f + i * 0.27f + c.index * 0.13f) % 1f;
+            float side = i % 2 == 0 ? -1f : 1f;
+            float lx = side * (d.wheelX + 0.5f + (i / 2) * 0.4f);
+            float ly = 0.3f + ((i * 0.37f + c.index * 0.21f) % 1f) * Math.max(0.6f, d.topY * 0.7f);
+            M4.copy(base, m);
+            M4.postTranslate(m, lx, ly, 1.4f - ph * 5.5f);
+            M4.postScale(m, 0.05f, 0.05f, 2f * (1f - ph) * len + 0.01f);
+            r.draw(art.cube, m, 0xFFFFFF, 0xFFFFFF, 0.6f);
+        }
     }
 
     // ice shell: crystals around a frozen car in car space: x across and z along (fractions of the car's size),
@@ -837,7 +1005,14 @@ public final class MatchView implements Match.Listener {
         for (int i = 0; i < POPS; i++) {
             if (popT[i] <= 0) continue;
             float t = popT[i];
-            float px = popX[i], py = popY[i] + (1f - t) * 3f, pz = popZ[i];
+            Car on = popCar[i];
+            if (on != null && !on.falling) {
+                // riding along with its car
+                popX[i] = on.x;
+                popZ[i] = on.z;
+            }
+            float rise = on != null ? (1f - t) * 1.2f + (on.falling ? 0f : on.y + on.hop) : (1f - t) * 3f;
+            float px = popX[i], py = popY[i] + rise, pz = popZ[i];
             if (hoodCar != null) {
                 // popups on top of the hood car would sit above the camera: show them ahead of the hood
                 float dx = px - hoodCar.x, dz = pz - hoodCar.z;

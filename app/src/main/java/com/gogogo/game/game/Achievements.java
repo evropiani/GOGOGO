@@ -8,12 +8,14 @@ public final class Achievements {
 
     // ---- stored counters (Save.stats)
     public static final int ST_TOP10 = 0, ST_TOP3 = 1, ST_BEST_ROUNDS = 2, ST_BEST_BONKS = 3, ST_BOOSTS = 4, ST_CLUTCH = 5,
-            ST_HOOD_WINS = 6, ST_COINS_EARNED = 7, ST_BEAN_WINS = 8, ST_MAPS_MASK = 9, ST_PURCHASES = 10;
+            ST_HOOD_WINS = 6, ST_COINS_EARNED = 7, ST_BEAN_WINS = 8, ST_MAPS_MASK = 9, ST_PURCHASES = 10,
+            ST_POWERS = 11, ST_NITROS = 12, ST_NITRO_BONKS = 13, ST_EMOTES = 14, ST_GLOATS = 15;
     public static final int STATS = 16;
 
     // ---- values computed from the save
     private static final int V_MATCHES = 100, V_WINS = 101, V_TIES = 102, V_ROUNDS = 103, V_BONKS = 104, V_LEVEL = 105,
-            V_CARS = 106, V_COIN_CARS = 107, V_MAXED = 108, V_COSMETICS = 109, V_MAPS = 110;
+            V_CARS = 106, V_COIN_CARS = 107, V_MAXED = 108, V_COSMETICS = 109, V_MAPS = 110, V_WARDROBE = 111,
+            V_EMOTES = 112;
 
     private static final Object[][] DEFS = {
             // name, description, stat, goal, xp, coins, rims
@@ -55,6 +57,16 @@ public final class Achievements {
             {"PIGGY BANK", "Earn 10,000 coins in matches", ST_COINS_EARNED, 10000, 200, 0, 10},
             {"UNDERDOG", "Win a match with the BUMPER BEAN", ST_BEAN_WINS, 1, 200, 500, 0},
             {"SHOPAHOLIC", "Buy 20 things", ST_PURCHASES, 20, 150, 300, 0},
+            // (new ones go at the end: saves keep which ones are done by position)
+            {"DRESSED UP", "Own 10 things for your driver", V_WARDROBE, 10, 150, 300, 0},
+            {"STYLE ICON", "Own 40 things for your driver", V_WARDROBE, 40, 400, 1000, 15},
+            {"POWER HUNGRY", "Use 100 power-ups", ST_POWERS, 100, 200, 500, 10},
+            {"NITRO JUNKIE", "Use nitro 25 times", ST_NITROS, 25, 150, 400, 0},
+            {"AFTERBURNER", "Ram a car off the arena while burning nitro", ST_NITRO_BONKS, 1, 100, 250, 0},
+            {"ROAD RAGE", "Ram 10 cars off while burning nitro", ST_NITRO_BONKS, 10, 300, 800, 10},
+            {"RAGEBAIT", "Emote 50 times in matches", ST_EMOTES, 50, 150, 400, 0},
+            {"BAD SPORT", "Emote right after knocking a car off", ST_GLOATS, 1, 100, 250, 0},
+            {"SHOWBOAT", "Own 10 victory emotes", V_EMOTES, 10, 300, 800, 10},
     };
 
     public static final int COUNT = DEFS.length;
@@ -128,6 +140,19 @@ public final class Achievements {
             }
             case V_MAPS:
                 return Integer.bitCount(s.stats[ST_MAPS_MASK]);
+            case V_WARDROBE: {
+                // everything but the free basics
+                int n = 0;
+                for (int k = 0; k < Outfits.PARTS; k++) {
+                    for (int i = 0; i < s.lookOwned[k].length; i++) if (s.lookOwned[k][i] && Outfits.RULE[k][i] != Items.FREE) n++;
+                }
+                return n;
+            }
+            case V_EMOTES: {
+                int n = 0;
+                for (int i = 0; i < Emotes.COUNT; i++) if (s.emoteOwned[i]) n++;
+                return n;
+            }
             default:
                 return stat >= 0 && stat < STATS ? s.stats[stat] : 0;
         }

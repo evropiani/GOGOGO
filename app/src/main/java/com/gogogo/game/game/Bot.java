@@ -56,6 +56,22 @@ public final class Bot {
         return Math.max(0f, Math.min(1f, v));
     }
 
+    /** How good a bot is, in words (shown while spectating it), and the color of each. */
+    private static final String[] RANK = {"SKILL: CLUELESS", "SKILL: ROOKIE", "SKILL: DECENT", "SKILL: SHARP", "SKILL: PRO"};
+    private static final int[] RANK_COLOR = {0xFFB8B0C8, 0xFF8FE36A, 0xFF5EC8FF, 0xFFFFB321, 0xFFFF4FA3};
+
+    private int rankIndex() {
+        return Math.min(RANK.length - 1, (int) (skill * RANK.length));
+    }
+
+    public String rank() {
+        return RANK[rankIndex()];
+    }
+
+    public int rankColor() {
+        return RANK_COLOR[rankIndex()];
+    }
+
     public void think(Match m, Car c, float dt) {
         if (c.falling) {
             // only while a super jump can still get it out of the fall

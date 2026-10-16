@@ -993,7 +993,14 @@ public final class MatchScreen extends Screen {
             float bw = 780, y = H - game.safeBottom - 70;
             b.shadow(W / 2 - bw / 2, y - 45 + 8, bw, 90, 45, 0x50200040, 10);
             b.shape(W / 2, y, bw, 90, 45, 0xFF2A1840, 0, 0, 0, 0, 0);
-            b.textFit(b.body, "WATCHING " + (t == null ? "" : t.name.toUpperCase()), W / 2 - 120, y + 2, 32f, 460, 0xFFFFFFFF, UIBatch.CENTER, 0, 0);
+            String who = "WATCHING " + (t == null ? "" : t.name.toUpperCase());
+            if (t != null && t.bot != null && t != match.player) {
+                // a bot: how good it is under its name
+                b.textFit(b.body, who, W / 2 - 120, y - 14, 30f, 460, 0xFFFFFFFF, UIBatch.CENTER, 0, 0);
+                b.text(b.title, t.bot.rank(), W / 2 - 120, y + 23, 25f, t.bot.rankColor(), UIBatch.CENTER, 0, 0);
+            } else {
+                b.textFit(b.body, who, W / 2 - 120, y + 2, 32f, 460, 0xFFFFFFFF, UIBatch.CENTER, 0, 0);
+            }
             if (ui.button("nextcar", W / 2 + bw / 2 - 270, y - 36, 120, 72, 0xFF8E62FF, ">", 46f)) nextSpectate();
             if (ui.button("skip", W / 2 + bw / 2 - 140, y - 36, 120, 72, 0xFFFF9A2B, "SKIP", 32f)) skipping = true;
         }

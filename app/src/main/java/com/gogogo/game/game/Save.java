@@ -40,6 +40,9 @@ public final class Save {
     public final boolean[] trailOwned = new boolean[Trails.COUNT];
     /** Equipped match look. map = -1 picks a random owned map every match. */
     public int map = 0, skin = 0, sky = 0, theme = 0, trail = 0;
+    /** The driver: what it wears (one item per Outfits part) and the owned items of each part. */
+    public final int[] look = new int[Outfits.PARTS];
+    public final boolean[][] lookOwned = new boolean[Outfits.PARTS][];
 
     // settings
     public boolean sound = true, music = true, vibration = true, shake = true, symbols = true, leftHanded = false;
@@ -58,6 +61,7 @@ public final class Save {
 
     public Save(Platform platform) {
         this.platform = platform;
+        for (int p = 0; p < Outfits.PARTS; p++) lookOwned[p] = new boolean[Outfits.count(p)];
         reset();
     }
 
@@ -88,6 +92,7 @@ public final class Save {
             }
         }
         map = skin = sky = theme = trail = 0;
+        Outfits.defaults(look);
         matches = wins = bestPlace = bonks = roundsSurvived = ties = 0;
         for (int i = 0; i < stats.length; i++) stats[i] = 0;
         for (int i = 0; i < achDone.length; i++) achDone[i] = false;
@@ -189,6 +194,15 @@ public final class Save {
         if (!skyOwned[sky]) sky = 0;
         if (!themeOwned[theme]) theme = 0;
         if (!trailOwned[trail]) trail = 0;
+        // the driver (profiles from before drivers keep the default look)
+        for (int k = 0; k < Outfits.PARTS; k++) bits(p.getProperty("dr" + k), lookOwned[k]);
+        String lk = p.getProperty("look");
+        if (lk != null) {
+            String[] t = lk.split(",");
+            for (int k = 0; k < Outfits.PARTS && k < t.length; k++) look[k] = parse(t[k], look[k]);
+            Outfits.sanitize(look);
+            for (int k = 0; k < Outfits.PARTS; k++) if (!lookOwned[k][look[k]]) look[k] = 0;
+        }
         sound = geti(p, "sound", 1) == 1;
         music = geti(p, "music", 1) == 1;
         vibration = geti(p, "vib", 1) == 1;
@@ -254,6 +268,10 @@ public final class Save {
         put(sb, "selsky", sky);
         put(sb, "seltheme", theme);
         put(sb, "seltrail", trail);
+        for (int k = 0; k < Outfits.PARTS; k++) sb.append("dr").append(k).append('=').append(bits(lookOwned[k])).append('\n');
+        sb.append("look=");
+        for (int k = 0; k < Outfits.PARTS; k++) sb.append(k > 0 ? "," : "").append(look[k]);
+        sb.append('\n');
         put(sb, "sound", sound ? 1 : 0);
         put(sb, "music", music ? 1 : 0);
         put(sb, "vib", vibration ? 1 : 0);

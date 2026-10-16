@@ -1,16 +1,25 @@
 package com.gogogo.game.game;
 
 /**
- * One API over every unlockable thing: cars, paints, toppers, wheels, maps, arena skins, skies, themes and trails.
- * Each item is unlocked one way: free, by reaching a player level, with coins, or with Rims (premium).
+ * One API over every unlockable thing: cars, paints, toppers, wheels, maps, arena skins, skies, themes, trails and
+ * the driver's wardrobe (HAT .. HELD, see Outfits). Each item is unlocked one way: free, by reaching a player level,
+ * with coins, or with Rims (premium).
  */
 public final class Items {
     private Items() {}
 
     // categories
     public static final int CAR = 0, PAINT = 1, TOPPER = 2, WHEEL = 3, MAP = 4, SKIN = 5, SKY = 6, THEME = 7, TRAIL = 8;
-    public static final int CATEGORIES = 9;
-    public static final String[] CAT_NAME = {"CAR", "PAINT", "TOPPER", "WHEELS", "MAP", "ARENA SKIN", "SKY", "THEME", "TRAIL"};
+    /** The driver's wardrobe, one category per Outfits part (HAT + part). */
+    public static final int HAT = 9, HAIR = 10, FACE = 11, SKIN_TONE = 12, SHIRT = 13, PANTS = 14, SHOES = 15, HELD = 16;
+    public static final int CATEGORIES = 17;
+    public static final String[] CAT_NAME = {"CAR", "PAINT", "TOPPER", "WHEELS", "MAP", "ARENA SKIN", "SKY", "THEME", "TRAIL",
+            "HAT", "HAIR", "FACE", "SKIN TONE", "SHIRT", "PANTS", "SHOES", "HAND ITEM"};
+
+    /** True for the driver's wardrobe categories. */
+    public static boolean outfit(int cat) {
+        return cat >= HAT;
+    }
 
     // unlock rules
     public static final int FREE = 0, LEVEL = 1, COINS = 2, RIMS = 3, HIDDEN = 4;
@@ -25,7 +34,8 @@ public final class Items {
             case SKIN: return Skins.COUNT;
             case SKY: return Skies.COUNT;
             case THEME: return Themes.COUNT;
-            default: return Trails.COUNT;
+            case TRAIL: return Trails.COUNT;
+            default: return Outfits.count(cat - HAT);
         }
     }
 
@@ -39,7 +49,8 @@ public final class Items {
             case SKIN: return Skins.NAME[i];
             case SKY: return Skies.NAME[i];
             case THEME: return Themes.NAME[i];
-            default: return Trails.NAME[i];
+            case TRAIL: return Trails.NAME[i];
+            default: return Outfits.NAME[cat - HAT][i];
         }
     }
 
@@ -60,7 +71,8 @@ public final class Items {
             case SKIN: return Skins.RULE[i];
             case SKY: return Skies.RULE[i];
             case THEME: return Themes.RULE[i];
-            default: return Trails.RULE[i];
+            case TRAIL: return Trails.RULE[i];
+            default: return Outfits.RULE[cat - HAT][i];
         }
     }
 
@@ -80,7 +92,8 @@ public final class Items {
             case SKIN: return Skins.VALUE[i];
             case SKY: return Skies.VALUE[i];
             case THEME: return Themes.VALUE[i];
-            default: return Trails.VALUE[i];
+            case TRAIL: return Trails.VALUE[i];
+            default: return Outfits.VALUE[cat - HAT][i];
         }
     }
 
@@ -94,7 +107,8 @@ public final class Items {
             case SKIN: return s.skinOwned;
             case SKY: return s.skyOwned;
             case THEME: return s.themeOwned;
-            default: return s.trailOwned;
+            case TRAIL: return s.trailOwned;
+            default: return s.lookOwned[cat - HAT];
         }
     }
 
@@ -139,7 +153,7 @@ public final class Items {
         return true;
     }
 
-    /** Equipped item of a match-cosmetic category (MAP .. TRAIL). For MAP, -1 means shuffle. */
+    /** Equipped item of a match-cosmetic category (MAP .. TRAIL) or of the driver. For MAP, -1 means shuffle. */
     public static int selected(Save s, int cat) {
         switch (cat) {
             case MAP: return s.map;
@@ -147,7 +161,7 @@ public final class Items {
             case SKY: return s.sky;
             case THEME: return s.theme;
             case TRAIL: return s.trail;
-            default: return 0;
+            default: return outfit(cat) ? s.look[cat - HAT] : 0;
         }
     }
 
@@ -158,7 +172,10 @@ public final class Items {
             case SKY: s.sky = i; break;
             case THEME: s.theme = i; break;
             case TRAIL: s.trail = i; break;
-            default: return;
+            default:
+                if (!outfit(cat)) return;
+                s.look[cat - HAT] = i;
+                break;
         }
         s.markDirty();
         s.flush();

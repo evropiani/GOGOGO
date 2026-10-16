@@ -29,6 +29,15 @@ public abstract class CarDef {
     public float hoodY = 1.8f, hoodZ = 0.6f;
     public boolean hoodFixed;
 
+    /**
+     * How the driver sits: HATCH pops out of a hole in the roof (legs out of sight), BENCH sits on an open seat
+     * with its legs forward, SADDLE rides astride with its legs hanging down the sides.
+     */
+    public static final int HATCH = 0, BENCH = 1, SADDLE = 2;
+    public int seatStyle = HATCH;
+    /** Driver seat: its hips (body space), its size, and (HATCH) the rim of the hole and how the roof slopes there. */
+    public float seatX, seatY = 1.3f, seatZ = -0.2f, seatScale = 0.9f, roofY = 1.6f, roofTilt;
+
     protected CarDef(int id, String name, String blurb, int price, float speed, float grip, float boost, float weight, int defPaint, int defAccent) {
         this.id = id;
         this.name = name;
@@ -73,6 +82,41 @@ public abstract class CarDef {
         topY = y;
         topZ = z;
         return this;
+    }
+
+    /** The driver pops out of a hole in the roof at height roofY, z along the car. */
+    public CarDef hatch(float roofY, float z, float scale) {
+        seatStyle = HATCH;
+        this.roofY = roofY;
+        seatZ = z;
+        seatScale = scale;
+        seatY = roofY - Driver.HATCH_DEPTH * scale;
+        return this;
+    }
+
+    /** Tilts the hatch rim with a sloping roof (radians, + = the front is lower). */
+    public CarDef roofTilt(float a) {
+        roofTilt = a;
+        return this;
+    }
+
+    /** The driver sits on an open seat (BENCH) or astride the car (SADDLE) with its hips at (y, z). */
+    public CarDef seat(int style, float y, float z, float scale) {
+        seatStyle = style;
+        seatY = y;
+        seatZ = z;
+        seatScale = scale;
+        return this;
+    }
+
+    /** The hole a HATCH driver sits in: a dark disc with a rim in the accent color (added to the body by Art). */
+    public void buildHatch(MeshBuilder m) {
+        if (seatStyle != HATCH) return;
+        float r = Driver.HATCH_R * seatScale;
+        m.push().translate(seatX, roofY, seatZ).rotateX(roofTilt);
+        m.fixed(0x241C30).cylinder(0, 0, 0, r, -0.06f, 0.012f, 0f, 20);
+        m.accent(1f).torus(0, 0.012f, 0, r + 0.025f, 0.04f, 22, 6);
+        m.pop();
     }
 
     /** Builds the body (everything but wheels and topper). */

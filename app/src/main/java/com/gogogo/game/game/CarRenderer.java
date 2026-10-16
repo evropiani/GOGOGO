@@ -9,14 +9,15 @@ public final class CarRenderer {
 
     /** base and m are scratch matrices; base receives the body transform. */
     public static void draw(Renderer r, Art art, Car c, float time, float[] base, float[] m) {
-        draw(r, art, c, time, base, m, true);
+        draw(r, art, c, time, base, m, true, DriverRenderer.FULL);
     }
 
     /**
-     * topper = false for the car the hood camera sits on: drawn without its topper, and level in a super jump
-     * (the camera doesn't pitch with the body, so the hood would swing through the view).
+     * topper = false for the car the hood camera sits on: drawn without its topper and its driver's head, and level
+     * in a super jump (the camera doesn't pitch with the body, so the hood would swing through the view).
+     * driver: the driver's level of detail (DriverRenderer.FULL, BUST or NONE).
      */
-    public static void draw(Renderer r, Art art, Car c, float time, float[] base, float[] m, boolean topper) {
+    public static void draw(Renderer r, Art art, Car c, float time, float[] base, float[] m, boolean topper, int driver) {
         CarDef d = c.def;
         int paint = Palette.paintColor(c.paint, time);
         int accent = Palette.paintColor(c.accent, time + 1.3f);
@@ -34,6 +35,13 @@ public final class CarRenderer {
         float pitch = (topper || !c.airborne ? c.rotX : 0f) - c.topZ * 0.15f, roll = c.rotZ + c.tilt;
         M4.trs(base, c.x, c.y + c.hop + bob, c.z, c.yaw, pitch, roll, sxz, sy, sxz);
         r.draw(art.cars[d.id], base, paint, accent, glow);
+        if (driver != DriverRenderer.NONE && !c.driver.flung && !c.driver.hidden) {
+            // the driver rides the body (sinking with its squash) but keeps its own shape
+            M4.trs(SEAT, c.x, c.y + c.hop + bob, c.z, c.yaw, pitch, roll, 1, 1, 1);
+            M4.postTranslate(SEAT, d.seatX * sxz, d.seatY * sy, d.seatZ * sxz);
+            float k = c.frozenT > 0 ? Math.min(1f, c.frozenT * 4f) * 0.6f : 0f;
+            DriverRenderer.seated(r, art, c, SEAT, driver, topper, time, ICE_TINT, k, glow);
+        }
         if (d.id == Cars.DISCO || d.id == Cars.TITAN) drawBodyExtras(r, art, c, d, time, base, m);
 
         for (int w = 0; w < 4; w++) {
@@ -84,7 +92,7 @@ public final class CarRenderer {
         }
     }
 
-    private static final float[] LAMP_M = new float[16];
+    private static final float[] LAMP_M = new float[16], SEAT = new float[16];
     /** Frozen cars are tinted towards this; sticky wheels get goo of this color. */
     static final int ICE_TINT = 0xBDEBFF, STICKY_GOO = 0xC04CF0;
     /** Lamp colors: red, yellow, green, and their switched-off tints. */

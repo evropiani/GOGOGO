@@ -239,7 +239,9 @@ public final class MatchView implements Match.Listener {
             if (dy > -1f) r.blob(match.duckX, dy + 0.03f, match.duckZ, 0.6f, 1f, 0, 0.35f);
         }
 
+        rankDrivers();
         for (Car c : match.cars) {
+            if (c.driver.flung && lod[c.index] != DriverRenderer.NONE) DriverRenderer.flung(r, art, c.driver);
             if (c.y < -85f) continue;
             drawCar(c, c == match.player && c.alive);
         }
@@ -249,11 +251,49 @@ public final class MatchView implements Match.Listener {
         fx.draw(r, art);
     }
 
+    // drivers: the whole ragdoll for the few closest to the camera, a one-piece stand-in further out, none far away
+    private static final int FULL_DRIVERS = 14;
+    private static final float FULL_R = 30f, BUST_R = 80f;
+    private final int[] near = new int[FULL_DRIVERS];
+    private final float[] nearD = new float[FULL_DRIVERS];
+    private byte[] lod = new byte[0];
+
+    /** Picks every driver's level of detail by its distance from the camera (the followed car always gets FULL). */
+    private void rankDrivers() {
+        Car[] cs = match.cars;
+        if (lod.length < cs.length) lod = new byte[cs.length];
+        float ex = game.cam.ex, ey = game.cam.ey, ez = game.cam.ez;
+        int n = 0;
+        for (int i = 0; i < cs.length; i++) {
+            Car c = cs[i];
+            Driver dv = c.driver;
+            float x = dv.flung ? dv.wx : c.x, y = dv.flung ? dv.wy : c.y, z = dv.flung ? dv.wz : c.z;
+            float d2 = (x - ex) * (x - ex) + (y - ey) * (y - ey) + (z - ez) * (z - ez);
+            lod[i] = (byte) (d2 < BUST_R * BUST_R ? DriverRenderer.BUST : DriverRenderer.NONE);
+            if (c == camCar && !dv.flung) d2 = -1f;
+            if (d2 >= FULL_R * FULL_R) continue;
+            // keep the closest few, sorted by distance
+            int k;
+            if (n < FULL_DRIVERS) k = n++;
+            else if (d2 < nearD[FULL_DRIVERS - 1]) k = FULL_DRIVERS - 1;
+            else continue;
+            while (k > 0 && nearD[k - 1] > d2) {
+                near[k] = near[k - 1];
+                nearD[k] = nearD[k - 1];
+                k--;
+            }
+            near[k] = i;
+            nearD[k] = d2;
+        }
+        for (int k = 0; k < n; k++) lod[near[k]] = DriverRenderer.FULL;
+    }
+
     public void drawCar(Car c, boolean marker) {
         Renderer r = game.r;
         Art art = game.art;
         CarDef d = c.def;
-        CarRenderer.draw(r, art, c, time, base, m, c != hoodCar);
+        int dl = c.index < lod.length ? lod[c.index] : DriverRenderer.FULL;
+        CarRenderer.draw(r, art, c, time, base, m, c != hoodCar, dl);
         if (c == hoodCar) marker = false;
 
         if (c.frozenT > 0) drawIce(r, art, c, c == hoodCar);

@@ -74,6 +74,9 @@ public final class Car {
     /** Power-ups picked up and used, and falls saved by a super jump, this match. */
     public int pickups, powersUsed, rescues;
 
+    /** Who drives it (look and ragdoll pose; stepped along with the car). */
+    public final Driver driver = new Driver();
+
     public Car(int index, CarDef def, String name, boolean isPlayer, int[] lv) {
         this.index = index;
         this.def = def;
@@ -121,6 +124,8 @@ public final class Car {
             vz *= (float) Math.exp(-0.6f * dt);
             rotX += spinX * dt;
             rotZ += spinZ * dt;
+            if (driver.flung) driver.tumble(dt);
+            else driver.ride(this, dt, 0f, 0f);
             return false;
         }
 
@@ -242,6 +247,8 @@ public final class Car {
             topZ += topVZ * dt;
             topX = Math.max(-0.7f, Math.min(0.7f, topX));
             topZ = Math.max(-0.7f, Math.min(0.7f, topZ));
+            driverFwd = aFwd;
+            driverSide = aSide;
         }
 
         // squash spring + hop
@@ -257,6 +264,8 @@ public final class Car {
             }
         }
         if (flash > 0) flash = Math.max(0f, flash - dt * 4f);
+        // the driver rides along (a frozen one is stuck in the ice)
+        if (!frozen) driver.ride(this, dt, driverFwd, driverSide);
 
         if (!god && !arena.supported(x, z)) {
             falling = true;
@@ -275,6 +284,8 @@ public final class Car {
 
     public boolean justBoosted;
     private float lastVx, lastVz;
+    /** This step's acceleration along the car and to its left (shoves the driver around). */
+    private float driverFwd, driverSide;
 
     // ------------------------------------------------------------------ power-up effects
 
@@ -367,6 +378,7 @@ public final class Car {
         wantBoost = false;
         justBoosted = false;
 
+        boolean fell = false;
         if (y <= 0f && vy < 0f) {
             airborne = false;
             if (god || arena.supported(x, z)) {
@@ -376,15 +388,16 @@ public final class Car {
                 rotX = rotZ = 0f;
                 squashV -= Math.min(16f, landSpeed * 0.8f);
                 justLanded = true;
-                return false;
+            } else {
+                // nothing underneath: down it goes
+                falling = true;
+                fallT = 0f;
+                spinX = (float) (Math.random() * 6 - 3);
+                spinZ = (float) (Math.random() * 6 - 3);
+                fell = true;
             }
-            // nothing underneath: down it goes
-            falling = true;
-            fallT = 0f;
-            spinX = (float) (Math.random() * 6 - 3);
-            spinZ = (float) (Math.random() * 6 - 3);
-            return true;
         }
-        return false;
+        if (frozenT <= 0) driver.ride(this, dt, 0f, 0f);
+        return fell;
     }
 }

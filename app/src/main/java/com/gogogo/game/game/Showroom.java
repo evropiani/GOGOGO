@@ -31,6 +31,8 @@ public final class Showroom {
         boolean same = car != null && car.def.id == carId;
         car = new Car(0, Cars.ALL[carId], "", false, lv);
         car.setLook(paint, accent, topper, wheel);
+        car.driver.setLook(game.save.look);
+        car.driver.settle();
         if (animate && !same) drop = 1f;
         else if (animate) car.squashV = -6f;
     }
@@ -62,6 +64,7 @@ public final class Showroom {
         car.topX += car.topVX * dt;
         car.topZ += car.topVZ * dt;
         car.wheelSpin += dt * 2f;
+        car.driver.idle(dt);
     }
 
     public void render() {

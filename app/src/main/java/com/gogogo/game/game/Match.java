@@ -103,6 +103,7 @@ public final class Match {
             player.god = opt.god;
             player.manual = true;
             player.trail = save.trail;
+            player.driver.setLook(save.look);
             if (opt.autopilot) player.bot = new Bot(rng, 2);
             cars[k++] = player;
         }
@@ -124,6 +125,12 @@ public final class Match {
             c.setLook(paint, accent, topper, wheel);
             c.trail = rng.chance(0.3f) ? rng.i(Trails.COUNT) : 0;
             cars[k] = c;
+        }
+        // the bots' drivers dress up from their own sequence (the match's rng stays as it was)
+        Rng looks = new Rng(seed * 31L + 7L);
+        for (Car c : cars) {
+            if (!c.isPlayer) Outfits.random(looks, c.driver.look);
+            c.driver.settle();
         }
         placeCars();
         alive = n;
@@ -314,7 +321,10 @@ public final class Match {
         }
         power.useRequested(canDrive);
         for (Car c : cars) {
-            if (!c.alive && c.y < -80f) continue;
+            if (!c.alive && c.y < -80f) {
+                if (c.driver.flung) c.driver.tumble(dt);
+                continue;
+            }
             c.step(arena, dt, canDrive && c.alive);
             // out once it loses its footing; holding a super jump buys a moment to jump out of the fall
             if (c.alive && c.falling && (c.power != PowerUps.JUMP || c.fallT >= PowerUps.RESCUE_TIME || !canDrive)) justFell.add(c);
@@ -338,6 +348,7 @@ public final class Match {
                 c.alive = false;
                 c.elimTime = time;
                 c.place = after + 1;
+                c.driver.fling(c);
                 if (c.lastHitBy >= 0 && time - c.lastHitTime < 2.2f) {
                     Car k = cars[c.lastHitBy];
                     if (k.alive) {
